@@ -11,9 +11,22 @@ import (
 func main() {
 	app := coco.NewApp()
 
+	app.Param("id", func(res coco.Response, req *coco.Request, next coco.NextFunc, param string) {
+		log.Println("Param Middleware")
+		next(res, req)
+	})
+
 	app.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		log.Println("Middleware 0")
 		next(res, req)
+	})
+
+	app.Get("hello/:id", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send(fmt.Sprintf("Hello %s 👋", req.Params["id"]))
+	})
+
+	app.Post("hello/:id", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send(fmt.Sprintf("Hello %s 👋", req.Params["id"]))
 	})
 
 	app.Get("hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {

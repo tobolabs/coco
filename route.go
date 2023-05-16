@@ -40,7 +40,8 @@ type Route struct {
 	// Middleware
 	middleware []Handler
 
-	app *App
+	paramHandlers map[string]ParamHandler
+	app           *App
 }
 
 func (r *Route) Router(path string) *Route {
@@ -106,6 +107,7 @@ func (r *Route) getfullPath(path string) string {
 
 func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
 	handlers = r.combineHandlers(handlers...)
+
 	r.hr.Handle(httpMethod, r.getfullPath(path), func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
 
 		request := newRequest(req, w, p)
@@ -118,10 +120,29 @@ func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
 			req:       &request,
 			accepted:  accepts,
 		}
-		response := Response{w, ctx, 0}
 
+		response := Response{w, ctx, 0}
+		execParamChain(ctx, p, r.paramHandlers)
 		ctx.next(response, &request)
 	})
+}
+
+func execParamChain(ctx *reqcontext, params httprouter.Params, handlers map[string]ParamHandler) {
+	if len(handlers) == 0 {
+		return
+	}
+	pending := make([]Handler, 0)
+	for _, p := range params {
+		if h, ok := handlers[p.Key]; ok {
+			fn := func(rw Response, req *Request, next NextFunc) {
+				h(rw, req, next, p.Value)
+			}
+			pending = append(pending, fn)
+		}
+	}
+
+	ctx.handlers = append(pending, ctx.handlers...)
+
 }
 
 func (r *Route) Get(path string, handlers ...Handler) *Route {
@@ -177,6 +198,15 @@ func (r *Route) Static(root fs.FS, path string) {
 	})
 }
 
+// Param calls the given handler when the route param matches the given param.
+// The handler is passed the value of the param.
 func (r *Route) Param(param string, handler ParamHandler) {
-	panic("not implemented")
+	if r.paramHandlers == nil {
+		r.paramHandlers = make(map[string]ParamHandler)
+	}
+	r.paramHandlers[param] = handler
+}
+
+func (r *Route) Path() string {
+	return r.base
 }
