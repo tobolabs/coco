@@ -1,0 +1,13 @@
+{
+	"dev": {
+		"watch": {
+			"exclude": [
+			  "vendor"
+			],
+		"include": [
+				"*.go"
+			 ]
+		  },
+		  "run":  "go run ."
+		}
+	  }
