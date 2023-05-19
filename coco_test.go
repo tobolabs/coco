@@ -22,36 +22,15 @@ func TestCocoApp(t *testing.T) {
 	if app.Path() != "/" {
 		t.Errorf("Expected base to be /, got %s", app.Path())
 	}
+	
+	app.Enable("trust proxy")
+	if v := app.Enabled("trust proxy"); !v {
+		t.Errorf("Expected enabled proxy to be true, got %v", v)
+	}
 
-	//app.Param("id", func(res coco.Response, req *coco.Request, next coco.NextFunc, id string) {
-	//	if id == "44" {
-	//		app.SetX("hint", "FF")
-	//	}
-	//	next(res, req)
-	//})
-	//
-	//hint := app.GetX("hint")
-	//if hint != "FF" {
-	//	t.Errorf("Expected hint to be FF, got %s", hint)
-	//}
-
-	//if v := app.GetX("env"); v != "test" {
-	//	t.Errorf("Expected env to be 'test', got %s", v)
-	//}
-	//
-	//app.Disable("trust proxy")
-	//if v := app.GetX("trust proxy"); v != false {
-	//	t.Errorf("Expected trust proxy to be false, got %v", v)
-	//}
-	//
-	//if v := app.Disabled("trust proxy"); !v {
-	//	t.Errorf("Expected disabled proxy to be true, got %v", v)
-	//}
-	//
-	//app.Enable("trust proxy")
-	//if v := app.Enabled("trust proxy"); !v {
-	//	t.Errorf("Expected enabled proxy to be true, got %v", v)
-	//}
+	if v := app.Disabled("trust proxy"); v {
+		t.Errorf("Expected disabled proxy to be false, got %v", v)
+	}
 
 	testRouteMethods(t, app)
 

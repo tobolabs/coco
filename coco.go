@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -31,7 +32,25 @@ type App struct {
 	*Route    // default Route
 	routes    map[string]*Route
 	templates map[string]*template.Template
-	settings  map[string]interface{}
+	settings  *settings
+}
+
+type settings struct {
+	xPoweredBy      bool
+	env             string
+	etag            string
+	trustProxy      bool
+	subDomainOffset int
+
+	custom map[string]interface{}
+}
+
+var defaultKeys = map[string]interface{}{
+	"x-powered-by":     true,
+	"etag":             "weak",
+	"trust proxy":      false,
+	"subdomain offset": 2,
+	"env":              "development",
 }
 
 // NewApp creates a new App instance with a default Route at the root path "/"
@@ -78,31 +97,95 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) getBool(key string) bool {
 
-	if v, ok := a.settings[key]; ok {
-		return v.(bool)
+	//check the default keys for any key with a boolean value
+	if _, ok := defaultKeys[key]; ok {
+		switch key {
+		case "x-powered-by":
+			return a.settings.xPoweredBy
+		case "trust proxy":
+			return a.settings.trustProxy
+
+		}
+	} else if v, ok := a.settings.custom[key]; ok {
+		vOk, e := strconv.ParseBool(fmt.Sprintf("%v", v))
+		if e != nil {
+			return false
+		}
+		return vOk
 	}
 
 	return false
 }
 
 func (a *App) SetX(key string, val interface{}) {
-	a.settings[key] = val
+	switch key {
+	case "x-powered-by":
+		a.settings.xPoweredBy = val.(bool)
+	case "etag":
+		a.settings.etag = val.(string)
+	case "trust proxy":
+		a.settings.trustProxy = val.(bool)
+	case "subdomain offset":
+		a.settings.subDomainOffset = val.(int)
+	case "env":
+		a.settings.env = val.(string)
+	default:
+		a.settings.custom[key] = val
+	}
 }
 
 func (a *App) Disable(key string) {
-	a.settings[key] = false
+	if v, ok := a.settings.custom[key]; ok {
+		a.settings.custom[key] = !v.(bool)
+		return
+	} else if _, ok := defaultKeys[key]; ok {
+		switch key {
+		case "x-powered-by":
+			a.settings.xPoweredBy = false
+		case "etag":
+			a.settings.etag = "none"
+		case "trust proxy":
+			a.settings.trustProxy = false
+		}
+	}
 }
 
 func (a *App) Enable(key string) {
-	a.settings[key] = true
+	if v, ok := a.settings.custom[key]; ok {
+		a.settings.custom[key] = v.(bool)
+		return
+	} else if _, ok := defaultKeys[key]; ok {
+		switch key {
+		case "x-powered-by":
+			a.settings.xPoweredBy = true
+		case "etag":
+			a.settings.etag = "weak"
+		case "trust proxy":
+			fmt.Println("enabled trust proxy")
+			a.settings.trustProxy = true
+		}
+	}
 }
 
 func (a *App) GetX(key string) interface{} {
 
-	if v, ok := a.settings[key]; ok {
+	if v, ok := a.settings.custom[key]; ok {
 		return v
-	}
+	} else if _, ok := defaultKeys[key]; ok {
+		switch key {
+		case "x-powered-by":
+			return a.settings.xPoweredBy
+		case "etag":
+			return a.settings.etag
+		case "trust proxy":
+			return a.settings.trustProxy
+		case "subdomain offset":
+			return a.settings.subDomainOffset
+		case "env":
+			return a.settings.env
 
+		}
+	}
 	return nil
 }
 
@@ -114,14 +197,13 @@ func (a *App) Enabled(key string) bool {
 	return a.getBool(key)
 }
 
-func defaultSettings() map[string]interface{} {
-	return map[string]interface{}{
-		"env":              "development",
-		"x-powered-by":     true,
-		"etag":             "weak",
-		"view cache":       true,
-		"trust proxy":      false,
-		"subdomain offset": 2,
-		"strict routing":   false,
+func defaultSettings() *settings {
+	return &settings{
+		xPoweredBy:      true,
+		env:             "development",
+		etag:            "weak",
+		trustProxy:      false,
+		subDomainOffset: 2,
+		custom:          make(map[string]interface{}),
 	}
 }
