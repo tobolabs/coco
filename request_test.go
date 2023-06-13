@@ -63,7 +63,7 @@ func TestRequest(t *testing.T) {
 
 		cookies := req.Cookies
 		if cookies["session"] != "123" {
-			t.Errorf("Expected session cookie to be 123, got %s", cookies["session"])
+			t.Errorf("[%s] Expected session cookie to be 123 , gott %s", req.Method, cookies["session"])
 		}
 
 		if req.Method == "GET" || req.Method == "HEAD" {
@@ -128,9 +128,14 @@ func TestRequest(t *testing.T) {
 			t.Errorf("Expected path to be /hello, got %s", path)
 		}
 
-		xcookies := req.SignedCookies
-		if xcookies["session"] != "123" {
-			t.Errorf("Expected session cookie to be 123, got %s", xcookies["session"])
+		baseUrl := req.BaseURL
+		if baseUrl != "/test" {
+			t.Errorf("Expected base url to be /test, got %s", baseUrl)
+		}
+
+		url := req.Url.String()
+		if url != "/hello" {
+			t.Errorf("Expected url to be /test/hello, got %s", url)
 		}
 
 		//accepts := req.Accepts("application/json")

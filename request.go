@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -83,6 +84,9 @@ type Request struct {
 
 	// Path contains a string corresponding to the path of the request.
 	Path string
+
+	// Url contains the parsed URL of the request.
+	Url *url.URL
 }
 
 func newRequest(r *http.Request, w http.ResponseWriter, params httprouter.Params) Request {
@@ -108,6 +112,7 @@ func newRequest(r *http.Request, w http.ResponseWriter, params httprouter.Params
 		Params:      make(map[string]string),
 		Method:      r.Method,
 		Body:        Body{r},
+		Url:         r.URL,
 		r:           r,
 		Path:        r.URL.Path,
 		Fresh:       checkFreshness(r, w),

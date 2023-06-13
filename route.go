@@ -44,6 +44,7 @@ type Route struct {
 	app           *App
 }
 
+// Router is equivalent of app.route(path), returns a new instance of route
 func (r *Route) Router(path string) *Route {
 	return r.app.newRoute(path)
 }

@@ -22,7 +22,7 @@ func TestCocoApp(t *testing.T) {
 	if app.Path() != "/" {
 		t.Errorf("Expected base to be /, got %s", app.Path())
 	}
-	
+
 	app.Enable("trust proxy")
 	if v := app.Enabled("trust proxy"); !v {
 		t.Errorf("Expected enabled proxy to be true, got %v", v)
@@ -32,7 +32,17 @@ func TestCocoApp(t *testing.T) {
 		t.Errorf("Expected disabled proxy to be false, got %v", v)
 	}
 
+	app.Disable("trust proxy")
+	if v := app.Enabled("trust proxy"); v {
+		t.Errorf("Expected enabled proxy to be false, got %v", v)
+	}
+
 	testRouteMethods(t, app)
+
+	app.SetX("title", "My Site")
+	if v := app.GetX("title"); v != "My Site" {
+		t.Errorf("Expected app.GetX to be 'My Site', got %v", v)
+	}
 
 }
 
