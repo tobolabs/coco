@@ -27,10 +27,10 @@ type ParamHandler func(res Response, req *Request, next NextFunc, param string)
 // It is the equivalent of what is returned in the express() function in express.
 // See: https://expressjs.com/en/4x/api.html#express
 type App struct {
-	base      *httprouter.Router
-	basePath  string
-	*Route    // default Route
-	routes    map[string]*Route
+	base     *httprouter.Router
+	basePath string
+	*Route   // default Route
+
 	templates map[string]*template.Template
 	settings  *settings
 }
@@ -62,12 +62,11 @@ func NewApp() (app *App) {
 
 	app = &App{
 		basePath: "",
-		routes:   make(map[string]*Route),
 		base:     httprouter.New(),
 		settings: defaultSettings(),
 	}
 
-	app.Route = app.newRoute(app.basePath)
+	app.Route = app.newRoute(app.basePath, true, nil)
 	return
 }
 
@@ -82,6 +81,7 @@ func (a *App) Listen(addr string, ctx context.Context) error {
 		Addr:    addr,
 		Handler: a,
 	}
+	a.configureRoutes()
 	go func() {
 		<-ctx.Done()
 		fmt.Println("shutting down server")
@@ -89,6 +89,43 @@ func (a *App) Listen(addr string, ctx context.Context) error {
 	}()
 
 	return server.ListenAndServe()
+}
+
+// configureRoutes method attaches the routes to their relevant handlers and middleware
+func (a *App) configureRoutes() {
+	a.printRoutes("root")
+	var routes []*Route
+	var transverse func(r *Route)
+	transverse = func(r *Route) {
+		routes = append(routes, r)
+		for _, child := range r.children {
+			transverse(child)
+		}
+	}
+	transverse(a.Route)
+	
+	for _, route := range routes {
+		for idx := range route.paths {
+			path := &route.paths[idx]
+			handlers := route.combineHandlers(path.handlers...)
+			route.hr.Handle(path.method, route.getfullPath(path.name), func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+				request := newRequest(req, w, p)
+				accepts := parseAccept(req.Header.Get("Accept"))
+				ctx := &reqcontext{
+					handlers:  handlers,
+					templates: route.app.templates,
+					req:       &request,
+					accepted:  accepts,
+				}
+
+				response := Response{w, ctx, 0}
+				execParamChain(ctx, p, route.paramHandlers)
+				ctx.next(response, &request)
+			})
+
+		}
+
+	}
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {

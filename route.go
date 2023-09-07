@@ -33,20 +33,41 @@ var methods = map[allowedMethod]string{
 	HEAD:    "HEAD",
 }
 
+type Path struct {
+	name     string
+	handlers []Handler
+	method   string
+}
+
 type Route struct {
 	base   string
 	hr     *httprouter.Router
-	parent bool
+	parent *Route
 	// Middleware
-	middleware []Handler
-
+	middleware    []Handler
+	paths         []Path
 	paramHandlers map[string]ParamHandler
 	app           *App
+
+	// gotta flex my data structures knowledge, so allow me cook ✋🏽
+	cachedMiddleware []Handler
+	rootNode         bool
+	children         map[string]*Route
+}
+
+func (r *Route) printRoutes(prefix string) {
+	fmt.Printf("%s%s with (%d) children  ", prefix, r.base, len(r.paths))
+	fmt.Printf("children: %d\n", len(r.children))
+	for _, child := range r.children {
+		//fmt.Printf("%s%s\n", prefix, child.base)
+		child.printRoutes(prefix + r.base + "->")
+	}
 }
 
 // Router is equivalent of app.route(path), returns a new instance of route
 func (r *Route) Router(path string) *Route {
-	return r.app.newRoute(path)
+	fmt.Printf("Router: is creating a child %s\n", r.base)
+	return r.app.newRoute(path, false, r)
 }
 
 func (r *Route) Use(middleware ...Handler) *Route {
@@ -56,15 +77,14 @@ func (r *Route) Use(middleware ...Handler) *Route {
 
 func (r *Route) combineHandlers(handlers ...Handler) []Handler {
 	middlewares := make([]Handler, 0)
-	middlewares = append(middlewares, r.app.middleware...)
-	if !r.parent {
-		middlewares = append(middlewares, r.middleware...)
-	}
+	middlewares = append(middlewares, r.fetchMiddleware()...)
 	return append(middlewares, handlers...)
 }
 
 func (a *App) pathify(p string) string {
-
+	if p == "" {
+		p = "/"
+	}
 	clean := fp.Clean(p)
 	if clean[0] != '/' {
 		clean = "/" + clean
@@ -73,25 +93,35 @@ func (a *App) pathify(p string) string {
 	return a.basePath + clean
 }
 
-func (a *App) newRoute(path string) *Route {
+func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 	var r Route
-	if path == "" {
-		path = "/"
-		r.parent = true
-	}
 	path = a.pathify(path)
 
-	if r, ok := a.routes[path]; ok {
-		return r
+	if isRoot {
+		r = Route{
+			base:     path,
+			hr:       a.base,
+			app:      a,
+			rootNode: true,
+			parent:   nil,
+			children: make(map[string]*Route),
+		}
+		a.Route = &r
 	} else {
-		a.routes[path] = r
+		r = Route{
+			base:     path,
+			hr:       a.base,
+			app:      a,
+			parent:   parent,
+			children: make(map[string]*Route),
+		}
+		parent.children[path] = &r
 	}
-	r.base = path
-	r.hr = a.base
-	r.app = a
+
 	return &r
 }
 
+// Debug: print all routes
 func (r *Route) getfullPath(path string) string {
 
 	raw := strings.Trim(path, "/")
@@ -106,26 +136,40 @@ func (r *Route) getfullPath(path string) string {
 	return fmt.Sprintf("%s/%s", r.base, raw)
 }
 
-func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
-	handlers = r.combineHandlers(handlers...)
+func (r *Route) fetchMiddleware() []Handler {
 
-	r.hr.Handle(httpMethod, r.getfullPath(path), func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+	if len(r.cachedMiddleware) > 0 {
+		return r.cachedMiddleware
+	}
 
-		request := newRequest(req, w, p)
+	middleware := append([]Handler{}, r.middleware...)
 
-		accepts := parseAccept(req.Header.Get("Accept"))
-
-		ctx := &reqcontext{
-			handlers:  handlers,
-			templates: r.app.templates,
-			req:       &request,
-			accepted:  accepts,
+	current := r.parent
+	for current != nil {
+		if len(current.cachedMiddleware) > 0 {
+			middleware = append(middleware, current.cachedMiddleware...)
+			break
 		}
+		middleware = append(middleware, current.middleware...)
+		current = current.parent
+	}
 
-		response := Response{w, ctx, 0}
-		execParamChain(ctx, p, r.paramHandlers)
-		ctx.next(response, &request)
-	})
+	r.cachedMiddleware = middleware
+
+	return middleware
+}
+
+func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
+	newPath := Path{
+		name:     path,
+		handlers: handlers,
+		method:   httpMethod,
+	}
+
+	if r.paths == nil {
+		r.paths = make([]Path, 0)
+	}
+	r.paths = append(r.paths, newPath)
 }
 
 func execParamChain(ctx *reqcontext, params httprouter.Params, handlers map[string]ParamHandler) {

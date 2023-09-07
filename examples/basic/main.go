@@ -16,6 +16,26 @@ func main() {
 		next(res, req)
 	})
 
+	// Application.All ✅
+	app.All("/generic", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send("Generic")
+	})
+
+	// Application.Delete ✅
+	app.Delete("/delete", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send("Delete")
+	})
+
+	// Application.Disable ✅
+	app.Disable("x-powered-by")
+
+	// Application.Disabled ✅
+	fmt.Printf("Disabled: %v\n", app.Disabled("x-powered-by"))
+
+	app.Get("/chekme", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send("Checkme")
+	})
+
 	app.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		log.Println("Middleware 0")
 		next(res, req)
@@ -40,12 +60,23 @@ func main() {
 	userRouter := app.Router("users")
 
 	userRouter.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
-		log.Println("Middleware 1")
+		log.Println("User Middleware 1")
 		next(res, req)
 	})
 
 	userRouter.Get("hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		res.Send("Hello User")
+	})
+
+	profileRouter := userRouter.Router("profile")
+
+	profileRouter.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		log.Println("Profile Middleware 1")
+		next(res, req)
+	})
+
+	profileRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send("Hello User Profile")
 	})
 
 	userRouter.Get("/profile/settings", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
