@@ -59,13 +59,22 @@ func main() {
 
 	userRouter := app.Router("users")
 
+	userRouter.Param("id", func(res coco.Response, req *coco.Request, next coco.NextFunc, param string) {
+		log.Println("User Param Middleware")
+		next(res, req)
+	})
+
+	userRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send("Hello User")
+	})
+
 	userRouter.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		log.Println("User Middleware 1")
 		next(res, req)
 	})
 
-	userRouter.Get("hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
-		res.Send("Hello User")
+	userRouter.Get("hello/:id", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send(fmt.Sprintf("Hello %s 👋", req.Params["id"]))
 	})
 
 	profileRouter := userRouter.Router("profile")
@@ -82,6 +91,13 @@ func main() {
 	userRouter.Get("/profile/settings", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		fmt.Println(req.Path)
 		res.Send("Hello User")
+	})
+
+	socialRouter := userRouter.Router("social")
+
+	socialRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Send("Hello User Social")
+
 	})
 
 	if err := app.Listen(":3003", context.Background()); err != nil {

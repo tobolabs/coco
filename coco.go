@@ -76,55 +76,46 @@ func NewApp() (app *App) {
 //
 // app.listen(3000, () => {})
 func (a *App) Listen(addr string, ctx context.Context) error {
-
 	server := &http.Server{
 		Addr:    addr,
 		Handler: a,
 	}
+
+	// Configure routes before starting the server
 	a.configureRoutes()
-	go func() {
-		<-ctx.Done()
-		fmt.Println("shutting down server")
-		server.Shutdown(ctx)
-	}()
 
 	return server.ListenAndServe()
 }
 
 // configureRoutes method attaches the routes to their relevant handlers and middleware
 func (a *App) configureRoutes() {
-	a.printRoutes("root")
-	var routes []*Route
-	var transverse func(r *Route)
-	transverse = func(r *Route) {
-		routes = append(routes, r)
-		for _, child := range r.children {
-			transverse(child)
-		}
-	}
-	transverse(a.Route)
+	a.traverseAndConfigure(a.Route)
+}
 
-	for _, route := range routes {
-		for idx := range route.paths {
-			path := &route.paths[idx]
-			handlers := route.combineHandlers(path.handlers...)
-			route.hr.Handle(path.method, path.name, func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+func (a *App) traverseAndConfigure(r *Route) {
+	if len(r.paths) > 0 {
+		for idx := range r.paths {
+			path := &r.paths[idx]
+			handlers := r.combineHandlers(path.handlers...)
+
+			r.hr.Handle(path.method, path.name, func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
 				request := newRequest(req, w, p)
 				accepts := parseAccept(req.Header.Get("Accept"))
 				ctx := &reqcontext{
 					handlers:  handlers,
-					templates: route.app.templates,
+					templates: r.app.templates,
 					req:       &request,
 					accepted:  accepts,
 				}
-
 				response := Response{w, ctx, 0}
-				execParamChain(ctx, p, route.paramHandlers)
+				execParamChain(ctx, p, r.paramHandlers)
 				ctx.next(response, &request)
 			})
-
 		}
+	}
 
+	for _, child := range r.children {
+		a.traverseAndConfigure(child)
 	}
 }
 

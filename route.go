@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	fp "path"
+	"path/filepath"
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
@@ -56,17 +57,16 @@ type Route struct {
 }
 
 func (r *Route) printRoutes(prefix string) {
-	fmt.Printf("%s%s with (%d) children  ", prefix, r.base, len(r.paths))
-	fmt.Printf("children: %d\n", len(r.children))
+	fmt.Printf("%s%s with (%d) paths, children: (%d)  \n", prefix, r.base, len(r.paths), len(r.children))
+
 	for _, child := range r.children {
 		//fmt.Printf("%s%s\n", prefix, child.base)
-		child.printRoutes(prefix + r.base + "->")
+		child.printRoutes(prefix)
 	}
 }
 
 // Router is equivalent of app.route(path), returns a new instance of route
 func (r *Route) Router(path string) *Route {
-	fmt.Printf("Router: is creating a child %s\n", r.base)
 	return r.app.newRoute(path, false, r)
 }
 
@@ -95,11 +95,11 @@ func (a *App) pathify(p string) string {
 
 func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 	var r Route
-	path = a.pathify(path)
+	cleanPath := a.pathify(path)
 
 	if isRoot {
 		r = Route{
-			base:     path,
+			base:     cleanPath,
 			hr:       a.base,
 			app:      a,
 			rootNode: true,
@@ -108,31 +108,28 @@ func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 		}
 		a.Route = &r
 	} else {
-		if parent.parent != nil {
-			path = parent.base + path
-		}
+		combinedPath := filepath.Join(parent.base, cleanPath)
 		r = Route{
-			base:     path,
+			base:     combinedPath,
 			hr:       a.base,
 			app:      a,
 			parent:   parent,
 			children: make(map[string]*Route),
 		}
-		parent.children[path] = &r
+		parent.children[combinedPath] = &r
 	}
 
 	return &r
 }
 
 func (r *Route) getfullPath(path string) string {
-	raw := strings.Trim(path, "/")
 	var builder strings.Builder
 
 	builder.WriteString(strings.TrimSuffix(r.base, "/"))
-	if len(raw) > 0 {
+	if len(path) > 0 && path[0] != '/' {
 		builder.WriteRune('/')
-		builder.WriteString(raw)
 	}
+	builder.WriteString(path)
 
 	return builder.String()
 }
@@ -177,8 +174,12 @@ func execParamChain(ctx *reqcontext, params httprouter.Params, handlers map[stri
 	if len(handlers) == 0 {
 		return
 	}
+
+	fmt.Println("executing param chain")
+
 	pending := make([]Handler, 0)
 	for _, p := range params {
+		fmt.Printf("executing param: %s\n", p.Key)
 		if h, ok := handlers[p.Key]; ok {
 			fn := func(rw Response, req *Request, next NextFunc) {
 				h(rw, req, next, p.Value)
@@ -247,6 +248,7 @@ func (r *Route) Static(root fs.FS, path string) {
 // Param calls the given handler when the route param matches the given param.
 // The handler is passed the value of the param.
 func (r *Route) Param(param string, handler ParamHandler) {
+
 	if r.paramHandlers == nil {
 		r.paramHandlers = make(map[string]ParamHandler)
 	}
