@@ -108,6 +108,9 @@ func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 		}
 		a.Route = &r
 	} else {
+		if parent.parent != nil {
+			path = parent.base + path
+		}
 		r = Route{
 			base:     path,
 			hr:       a.base,
@@ -121,19 +124,17 @@ func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 	return &r
 }
 
-// Debug: print all routes
 func (r *Route) getfullPath(path string) string {
-
 	raw := strings.Trim(path, "/")
+	var builder strings.Builder
 
-	if len(raw) > 0 && raw[0] == ':' {
-		return r.base + "/" + raw
+	builder.WriteString(strings.TrimSuffix(r.base, "/"))
+	if len(raw) > 0 {
+		builder.WriteRune('/')
+		builder.WriteString(raw)
 	}
 
-	if strings.HasSuffix(r.base, "/") {
-		return fmt.Sprintf("%s%s", r.base, raw)
-	}
-	return fmt.Sprintf("%s/%s", r.base, raw)
+	return builder.String()
 }
 
 func (r *Route) fetchMiddleware() []Handler {
@@ -161,7 +162,7 @@ func (r *Route) fetchMiddleware() []Handler {
 
 func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
 	newPath := Path{
-		name:     path,
+		name:     r.getfullPath(path),
 		handlers: handlers,
 		method:   httpMethod,
 	}

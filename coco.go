@@ -103,12 +103,12 @@ func (a *App) configureRoutes() {
 		}
 	}
 	transverse(a.Route)
-	
+
 	for _, route := range routes {
 		for idx := range route.paths {
 			path := &route.paths[idx]
 			handlers := route.combineHandlers(path.handlers...)
-			route.hr.Handle(path.method, route.getfullPath(path.name), func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
+			route.hr.Handle(path.method, path.name, func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
 				request := newRequest(req, w, p)
 				accepts := parseAccept(req.Header.Get("Accept"))
 				ctx := &reqcontext{
