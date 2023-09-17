@@ -4,11 +4,15 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 type Response struct {
@@ -31,14 +35,21 @@ func (r *Response) Append(key, value string) *Response {
 // Attachment sets the Content-Disposition header to “attachment”.
 // If a filename is given, then the Content-Type header is set based on the filename’s extension.
 func (r *Response) Attachment(filename string) *Response {
+	contentDisposition := "attachment"
 
 	if filename != "" {
-		r.w.Header().Set("Content-Disposition", "attachment; filename="+filename)
-		ext := filepath.Ext(filename)
-		r.w.Header().Set("Content-Type", ext)
-	} else {
-		r.w.Header().Set("Content-Disposition", "attachment")
+		cleanFilename := filepath.Clean(filename)
+		escapedFilename := url.PathEscape(cleanFilename)
+		contentDisposition = fmt.Sprintf("attachment; filename=%s", escapedFilename)
+		ext := filepath.Ext(cleanFilename)
+		mimeType := mime.TypeByExtension(ext)
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+		r.w.Header().Set("Content-Type", mimeType)
 	}
+
+	r.w.Header().Set("Content-Disposition", contentDisposition)
 	return r
 }
 
@@ -69,65 +80,151 @@ func (r *Response) ClearCookie(cookie *http.Cookie) *Response {
 }
 
 type DownloadOption struct {
-
-	// MaxAge sets the max-age property of the Cache-Control header in milliseconds.
-	MaxAge int
-
-	// LastModified sets the Last-Modified header to the file modification time.
+	MaxAge       int
 	LastModified bool
-
-	// Headers containing HTTP headers to serve with the file.
-	// The header Content-Disposition will be overriden by the filename argument
-	Headers map[string]string
-
-	// Dotfiles enables  serving of dotfiles. Possible values are “allow”, “deny”, “ignore”
-	Dotfiles bool
-
-	// AcceptRanges enable or disable accepting ranged requests
+	Headers      map[string]string
+	Dotfiles     string
 	AcceptRanges bool
-
-	// CacheControl enable or disable setting Cache-Control response header
 	CacheControl bool
-
-	// Immutable enable or disable the immutable directive in the Cache-Control response header.
-	// If enabled, the maxAge option should also be specified to enable caching.
-	// The immutable directive will prevent supported clients from making conditional
-	// requests during the life of the maxAge option to check if the file has changed
-	Immutable bool
+	Immutable    bool
 }
+
+var (
+	defaultDownloadOptions = &DownloadOption{
+		MaxAge:       0,
+		LastModified: false,
+		Headers:      nil,
+		Dotfiles:     "ignore",
+		AcceptRanges: true,
+		CacheControl: true,
+		Immutable:    false,
+	}
+	errDirPath      = errors.New("specified path is a directory")
+	errDotfilesDeny = errors.New("serving dotfiles is not allowed")
+)
 
 func (r *Response) Download(filepath, filename string, options *DownloadOption, cb func(error)) {
-
-	// TODO: improve this method to accept headers and other options
-	fi, err := os.Stat(filename)
-	if err == nil && !fi.IsDir() {
-		if file, err := os.Open(filename); err == nil {
-			defer file.Close()
-			http.ServeContent(r.w, r.ctx.request(), filename, fi.ModTime(), file)
-			return
-		}
+	if options == nil {
+		options = defaultDownloadOptions
 	}
-	// fi, err := os.Stat(filename)
-	// if err == nil && !fi.IsDir() {
-	// 	if file, err := os.Open(filename); err == nil {
-	// 		defer file.Close()
-	// 		http.ServeContent(r.w, r.ctx.Request(), filename, fi.ModTime(), file)
-	// 		return
-	// 	}
-	// }
 
-	cb(err)
+	// check dotfiles option and update the filename accordingly
+	if options.Dotfiles == "deny" && strings.HasPrefix(filename, ".") {
+		cb(errDotfilesDeny)
+		return
+	}
+
+	r.SendFile(filepath, filename, options, cb)
 }
 
-// JSON sets the Content-Type as “application/json” and sends a JSON response.
-func (r *Response) JSON(v interface{}) *Response {
-	if cty := r.w.Header().Get("Content-Type"); cty == "" {
-		r.w.Header().Set("Content-Type", "application/json")
+// SendFile transfers the file at the given path.
+// Sets the Content-Type response HTTP header field based on the filename’s extension.
+func (r *Response) SendFile(filepath, filename string, options *DownloadOption, cb func(error)) {
+	if cb == nil {
+		cb = func(error) {
+		}
 	}
 
-	jsn, _ := json.Marshal(v)
-	fmt.Printf("Type of jsn: %T\n", jsn)
+	fi, err := os.Stat(filepath)
+	if err != nil {
+		cb(err)
+		return
+	}
+
+	if fi.IsDir() {
+		cb(errDirPath)
+		return
+	}
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		cb(err)
+		return
+	}
+	defer file.Close()
+
+	// Construct Cache-Control header
+	cacheControlValues := make([]string, 0)
+	if options.CacheControl {
+		if options.MaxAge > 0 {
+			cacheControlValues = append(cacheControlValues, fmt.Sprintf("public, max-age=%d", options.MaxAge))
+		} else {
+			cacheControlValues = append(cacheControlValues, "public, max-age=0")
+		}
+		if options.Immutable {
+			cacheControlValues = append(cacheControlValues, "immutable")
+		}
+		r.w.Header().Set("Cache-Control", strings.Join(cacheControlValues, ", "))
+	}
+
+	if options.LastModified {
+		r.w.Header().Set("Last-Modified", fi.ModTime().Format(time.RFC1123))
+	}
+	if options.AcceptRanges {
+		r.w.Header().Set("Accept-Ranges", "bytes")
+	}
+	for key, value := range options.Headers {
+		r.w.Header().Set(key, value)
+	}
+
+	r.w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+
+	http.ServeContent(r.w, r.ctx.request(), filename, fi.ModTime(), file)
+
+	cb(nil)
+
+}
+
+// JSON sends a JSON response with the given payload.
+func (r *Response) JSON(v interface{}) *Response {
+
+	r.setContentType("application/json")
+
+	jsn, err := json.Marshal(v)
+	if err != nil {
+		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		return r
+	}
+
 	return r.Send(jsn)
+}
+
+func (r *Response) setContentType(contentType string) {
+	if cty := r.w.Header().Get("Content-Type"); cty == "" {
+		r.w.Header().Set("Content-Type", contentType)
+	}
+}
+
+// Send sends the HTTP response.
+// The body parameter can be a string, a []byte, or any other value.
+func (r *Response) Send(body interface{}) *Response {
+	r.setContentType("application/octet-stream")
+
+	var data []byte
+	var err error
+
+	switch chunk := body.(type) {
+	case string:
+		r.setContentType("text/html")
+		data = []byte(chunk)
+	case []byte:
+		data = chunk
+	default:
+		r.setContentType("application/json")
+		data, err = json.Marshal(chunk)
+		if err != nil {
+			http.Error(r.w, err.Error(), http.StatusInternalServerError)
+			return r
+		}
+	}
+
+	if _, err := r.w.Write(data); err != nil {
+		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		return r
+	}
+
+	r.status = http.StatusOK
+	return r
 }
 
 // TODO: implement this method
@@ -158,35 +255,6 @@ func (r *Response) Redirect(path string, status ...int) {
 	// 	r.WriteHeader(status[0])
 	// }
 	http.Redirect(r.w, r.ctx.request(), path, http.StatusFound)
-}
-
-func (r *Response) Send(body interface{}) *Response {
-
-	cType := r.w.Header().Get("Content-Type")
-	switch chunk := body.(type) {
-	case string:
-		if cType == "" {
-			r.w.Header().Set("Content-Type", "text/html")
-		}
-		r.w.Write([]byte(chunk))
-	case []uint8:
-		if cType == "" {
-			r.w.Header().Set("Content-Type", "application/octet-stream")
-		}
-		r.w.Write(chunk)
-	default:
-		if cType == "" {
-			r.w.Header().Set("Content-Type", "application/json")
-		}
-
-	}
-	if !r.written() {
-		r.status = http.StatusOK
-	}
-	return r
-}
-
-func (r *Response) SendFile(filename string, cb func(error)) {
 }
 
 func (r *Response) SendStatus(statusCode int) {

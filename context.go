@@ -10,8 +10,7 @@ type reqcontext struct {
 	templates map[string]*template.Template
 	req       *Request
 	app       *App
-
-	accepted []string
+	accepted  []string
 }
 
 func (c *reqcontext) coco() *App {
@@ -26,8 +25,10 @@ func (c *reqcontext) request() *http.Request {
 // If there is no next handler, the request is terminated.
 func (c *reqcontext) next(rw Response, req *Request) {
 	if len(c.handlers) == 0 {
+		http.NotFound(rw.w, c.request())
 		return
 	}
+
 	// Take the first handler off the list and call it.
 	h := c.handlers[0]
 	c.handlers = c.handlers[1:]
