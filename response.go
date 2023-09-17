@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -196,7 +199,7 @@ func (r *Response) setContentType(contentType string) {
 }
 
 // Send sends the HTTP response.
-// The body parameter can be a string, a []byte, or any other value.
+// The body can be a string, a []byte, or any other value.
 func (r *Response) Send(body interface{}) *Response {
 	r.setContentType("application/octet-stream")
 
@@ -227,46 +230,42 @@ func (r *Response) Send(body interface{}) *Response {
 	return r
 }
 
-// TODO: implement this method
+// Set sets the specified value to the HTTP response header field.
+// If the header is not already set, it creates the header with the specified value.
 func (r *Response) Set(key string, val ...string) {
-
-}
-
-func (r *Response) Get(key string) string {
-	return r.w.Header().Get(key)
-}
-
-func (r *Response) Location(path string) {
-	var location string
-
-	if path == "back" {
-		location = r.ctx.request().Referer()
+	if len(val) == 0 {
+		return
 	}
 
-	if location == "" {
-		location = "/"
+	key = strings.ToLower(key)
+
+	if key == "content-type" && !strings.Contains(strings.ToLower(val[0]), "charset") {
+		if strings.HasPrefix(val[0], "text/") || strings.Contains(val[0], "application/json") {
+			val[0] += "; charset=utf-8"
+		}
+
 	}
 
-	r.w.Header().Set("Location", url.QueryEscape(location))
+	if len(val) > 1 {
+		r.w.Header().Set(key, strings.Join(val, ", "))
+	} else {
+		r.w.Header().Set(key, val[0])
+	}
 }
 
-func (r *Response) Redirect(path string, status ...int) {
-	// if len(status) > 0 {
-	// 	r.WriteHeader(status[0])
-	// }
-	http.Redirect(r.w, r.ctx.request(), path, http.StatusFound)
-}
+// SendStatus sends the HTTP response status code.
+func (r *Response) SendStatus(statusCode int) *Response {
+	body := http.StatusText(statusCode)
+	if body == "" {
+		body = strconv.Itoa(statusCode)
+	}
 
-func (r *Response) SendStatus(statusCode int) {
+	r.w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	r.status = statusCode
-}
+	r.w.WriteHeader(statusCode)
+	r.w.Write([]byte(body))
 
-func (r *Response) Type(filename string) {
-	r.w.Header().Set("Content-Type", filepath.Ext(filename))
-}
-
-func (r *Response) Vary(field string) {
-	r.w.Header().Add("Vary", field)
+	return r
 }
 
 // Status sets the HTTP status for the response.
@@ -275,9 +274,109 @@ func (r *Response) Status(code int) *Response {
 		return r
 	}
 	r.status = code
+	r.w.WriteHeader(code)
 	return r
 }
 
+// Get returns the HTTP response header specified by field.
+func (r *Response) Get(key string) string {
+	return r.w.Header().Get(key)
+}
+
+// Location sets the response Location HTTP header to the specified path parameter.
+// If the provided path is relative, it is instead resolved relative to the path of the current request.
+func (r *Response) Location(path string) string {
+	var location string
+
+	if path == "back" {
+		location = r.ctx.request().Referer()
+	}
+
+	if location == "" {
+		location = path
+	}
+
+	parsedURL, err := url.Parse(location)
+	if err != nil {
+		// Log the error, replace with your logger
+		log.Println("Invalid URL: ", err)
+		location = "/"
+	}
+	r.w.Header().Set("Location", parsedURL.String())
+
+	return location
+}
+
+// Redirect redirects to the URL derived from the specified path, with specified status.
+// If status is not specified, status defaults to '302 Found'.
+func (r *Response) Redirect(path string, status ...int) {
+	statusCode := http.StatusFound // Default to 302
+	if len(status) > 0 {
+		statusCode = status[0]
+	}
+
+	redirectURL := r.Location(path)
+	http.Redirect(r.w, r.ctx.request(), redirectURL, statusCode)
+}
+
+// Type sets the Content-Type HTTP header to the MIME type as determined by the filename’s extension.
+func (r *Response) Type(filename string) {
+	mimeType := mime.TypeByExtension(filepath.Ext(filename))
+	r.w.Header().Set("Content-Type", mimeType)
+}
+
+// VaryFieldNameRegex checks for valid field names for the Vary header as defined by RFC 7231.
+var VaryFieldNameRegex = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
+
+// Vary add field to Vary header, if it doesn't already exist.
+func (r *Response) Vary(field string) {
+
+	if field == "" {
+		log.Println("field argument is required")
+		return
+	}
+
+	existingHeader := r.w.Header().Get("Vary")
+
+	fields := strings.Split(field, ",")
+	for i, field := range fields {
+		fields[i] = strings.TrimSpace(field)
+	}
+
+	existingFields := strings.Split(existingHeader, ",")
+	for i, field := range existingFields {
+		existingFields[i] = strings.TrimSpace(field)
+	}
+
+	for _, f := range fields {
+		if !VaryFieldNameRegex.MatchString(f) {
+			log.Println("field argument contains an invalid header name")
+			return
+		}
+	}
+
+	if existingHeader == "*" || strings.Contains(field, "*") {
+		r.w.Header().Set("Vary", "*")
+		return
+	}
+
+	// Utilizing a map to efficiently check if a field already exists
+	fieldMap := make(map[string]bool)
+	for _, f := range fields {
+		fieldMap[strings.ToLower(f)] = true
+	}
+
+	for _, ef := range existingFields {
+		if !fieldMap[strings.ToLower(ef)] {
+			fields = append(fields, ef)
+		}
+	}
+
+	r.w.Header().Set("Vary", strings.Join(fields, ", "))
+}
+
+// Render renders a template with data and sends a text/html response.
+// name is the name of the template to render.
 func (r *Response) Render(name string, data interface{}) error {
 
 	temp := r.ctx.templates[name]
