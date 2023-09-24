@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -32,25 +31,17 @@ type App struct {
 	*Route   // default Route
 
 	templates map[string]*template.Template
-	settings  *settings
+	settings  map[string]interface{}
 }
 
-type settings struct {
-	xPoweredBy      bool
-	env             string
-	etag            string
-	trustProxy      bool
-	subDomainOffset int
-
-	custom map[string]interface{}
-}
-
-var defaultKeys = map[string]interface{}{
-	"x-powered-by":     true,
-	"etag":             "weak",
-	"trust proxy":      false,
-	"subdomain offset": 2,
-	"env":              "development",
+func defaultSettings() map[string]interface{} {
+	return map[string]interface{}{
+		"x-powered-by":     true,
+		"env":              "development",
+		"etag":             "weak",
+		"trust proxy":      false,
+		"subdomain offset": 2,
+	}
 }
 
 // NewApp creates a new App instance with a default Route at the root path "/"
@@ -99,17 +90,20 @@ func (a *App) traverseAndConfigure(r *Route) {
 			handlers := r.combineHandlers(path.handlers...)
 
 			r.hr.Handle(path.method, path.name, func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
-				request := newRequest(req, w, p)
+				request, e := newRequest(req, w, p, a)
+				if e != nil {
+					fmt.Printf("DEBUG: %v\n", e)
+				}
 				accepts := parseAccept(req.Header.Get("Accept"))
 				ctx := &reqcontext{
 					handlers:  handlers,
 					templates: r.app.templates,
-					req:       &request,
+					req:       request,
 					accepted:  accepts,
 				}
 				response := Response{w, ctx, 0}
 				execParamChain(ctx, p, r.paramHandlers)
-				ctx.next(response, &request)
+				ctx.next(response, request)
 			})
 		}
 	}
@@ -123,115 +117,28 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.base.ServeHTTP(w, r)
 }
 
-func (a *App) getBool(key string) bool {
-
-	//check the default keys for any key with a boolean value
-	if _, ok := defaultKeys[key]; ok {
-		switch key {
-		case "x-powered-by":
-			return a.settings.xPoweredBy
-		case "trust proxy":
-			return a.settings.trustProxy
-
-		}
-	} else if v, ok := a.settings.custom[key]; ok {
-		vOk, e := strconv.ParseBool(fmt.Sprintf("%v", v))
-		if e != nil {
-			return false
-		}
-		return vOk
-	}
-
-	return false
-}
-
-func (a *App) SetX(key string, val interface{}) {
-	switch key {
-	case "x-powered-by":
-		a.settings.xPoweredBy = val.(bool)
-	case "etag":
-		a.settings.etag = val.(string)
-	case "trust proxy":
-		a.settings.trustProxy = val.(bool)
-	case "subdomain offset":
-		a.settings.subDomainOffset = val.(int)
-	case "env":
-		a.settings.env = val.(string)
-	default:
-		a.settings.custom[key] = val
-	}
-}
-
 func (a *App) Disable(key string) {
-	if v, ok := a.settings.custom[key]; ok {
-		a.settings.custom[key] = !v.(bool)
-		return
-	} else if _, ok := defaultKeys[key]; ok {
-		switch key {
-		case "x-powered-by":
-			a.settings.xPoweredBy = false
-		case "etag":
-			a.settings.etag = "none"
-		case "trust proxy":
-			a.settings.trustProxy = false
-		}
-	}
+	a.settings[key] = false
 }
 
 func (a *App) Enable(key string) {
-	if v, ok := a.settings.custom[key]; ok {
-		a.settings.custom[key] = v.(bool)
-		return
-	} else if _, ok := defaultKeys[key]; ok {
-		switch key {
-		case "x-powered-by":
-			a.settings.xPoweredBy = true
-		case "etag":
-			a.settings.etag = "weak"
-		case "trust proxy":
-			fmt.Println("enabled trust proxy")
-			a.settings.trustProxy = true
-		}
-	}
+	a.settings[key] = true
+}
+
+func (a *App) SetX(key string, value interface{}) {
+	a.settings[key] = value
 }
 
 func (a *App) GetX(key string) interface{} {
-
-	if v, ok := a.settings.custom[key]; ok {
-		return v
-	} else if _, ok := defaultKeys[key]; ok {
-		switch key {
-		case "x-powered-by":
-			return a.settings.xPoweredBy
-		case "etag":
-			return a.settings.etag
-		case "trust proxy":
-			return a.settings.trustProxy
-		case "subdomain offset":
-			return a.settings.subDomainOffset
-		case "env":
-			return a.settings.env
-
-		}
-	}
-	return nil
+	return a.settings[key]
 }
 
 func (a *App) Disabled(key string) bool {
-	return !a.getBool(key)
+	value, ok := a.settings[key].(bool)
+	return ok && !value
 }
 
 func (a *App) Enabled(key string) bool {
-	return a.getBool(key)
-}
-
-func defaultSettings() *settings {
-	return &settings{
-		xPoweredBy:      true,
-		env:             "development",
-		etag:            "weak",
-		trustProxy:      false,
-		subDomainOffset: 2,
-		custom:          make(map[string]interface{}),
-	}
+	value, ok := a.settings[key].(bool)
+	return ok && value
 }
