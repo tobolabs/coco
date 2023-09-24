@@ -1,6 +1,7 @@
 package coco
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/go-http-utils/fresh"
-	"github.com/golang/gddo/httputil/header"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -26,8 +26,6 @@ func (e Error) Error() string {
 
 type Request struct {
 	r *http.Request
-
-	accepted []string
 
 	BaseURL string
 
@@ -54,7 +52,7 @@ type Request struct {
 	Xhr bool
 
 	// OriginalURL is the original URL requested by the client.
-	OriginalURL string
+	OriginalURL *url.URL
 
 	// Cookies contains the cookies sent by the request.
 	Cookies map[string]string
@@ -69,7 +67,6 @@ type Request struct {
 	Params map[string]string
 
 	// SignedCookies contains the signed cookies sent by the request.
-	// see - https://expressjs.com/en/4x/api.html#req.signedCookies
 	SignedCookies map[string]string
 
 	// Stale is a boolean that is true if the request is stale, false otherwise.
@@ -84,56 +81,121 @@ type Request struct {
 
 	// Path contains a string corresponding to the path of the request.
 	Path string
-
-	// Url contains the parsed URL of the request.
-	Url *url.URL
-}
-
-func newRequest(r *http.Request, w http.ResponseWriter, params httprouter.Params) Request {
-
-	isXhr := func() bool {
-		xrw := r.Header.Get("X-Requested-With")
-		if xrw == "XMLHttpRequest" || xrw == strings.ToLower("XMLHttpRequest") {
-			return true
-		}
-		return false
-	}
-
-	req := Request{
-		BaseURL:     filepath.Dir(r.URL.Path),
-		HostName:    r.Host,
-		Ip:          r.RemoteAddr,
-		Protocol:    r.Proto,
-		Secure:      r.TLS != nil,
-		Xhr:         isXhr(),
-		OriginalURL: r.URL.Path,
-		Cookies:     make(map[string]string),
-		Query:       make(map[string]string),
-		Params:      make(map[string]string),
-		Method:      r.Method,
-		Body:        Body{r},
-		Url:         r.URL,
-		r:           r,
-		Path:        r.URL.Path,
-		Fresh:       checkFreshness(r, w),
-	}
-
-	for _, cookie := range r.Cookies() {
-		req.Cookies[cookie.Name] = cookie.Value
-	}
-
-	for key, value := range r.URL.Query() {
-		req.Query[key] = value[0]
-	}
-
-	for _, param := range params {
-		req.Params[param.Key] = param.Value
-	}
-	return req
 }
 
 type Body struct {
 	req *http.Request
+}
+
+func newRequest(r *http.Request, w http.ResponseWriter, params httprouter.Params, app *App) (*Request, error) {
+	hostName, err := parseHostName(r.Host)
+	if err != nil {
+		return nil, err
+	}
+
+	ip, err := parseIP(r.RemoteAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	xhr := isXhr(r.Header.Get("X-Requested-With"))
+
+	domainOffset := app.settings["subdomain offset"].(int)
+
+	req := &Request{
+		BaseURL:     filepath.Dir(r.URL.Path),
+		HostName:    hostName,
+		Ip:          ip,
+		Ips:         []string{},
+		Protocol:    r.Proto,
+		Secure:      r.TLS != nil,
+		Xhr:         xhr,
+		OriginalURL: r.URL,
+		Cookies:     parseCookies(r.Cookies()),
+		Query:       parseQuery(r.URL.Query()),
+		Params:      parseParams(params),
+		Method:      r.Method,
+		Body:        Body{r},
+		r:           r,
+		Path:        r.URL.Path,
+		Stale:       !checkFreshness(r, w),
+		Fresh:       checkFreshness(r, w),
+		Subdomains:  parseSubdomains(hostName, domainOffset),
+	}
+
+	if app.IsTrustProxyEnabled() {
+		req.Ips = parseXForwardedFor(r.Header.Get("X-Forwarded-For"))
+	}
+
+	return req, nil
+}
+
+// parseSubdomains parses the subdomains of the request hostname based on a subdomain offset.
+func parseSubdomains(host string, subdomainOffset int) []string {
+	parts := strings.Split(host, ".")
+
+	// Ensure there are enough parts to slice
+	if len(parts) <= subdomainOffset {
+		return nil
+	}
+
+	return parts[:len(parts)-subdomainOffset]
+}
+
+func (a *App) IsTrustProxyEnabled() bool {
+	return a.settings["trust proxy"].(bool)
+}
+
+// parseXForwardedFor parses the X-Forwarded-For header to extract IP addresses
+func parseXForwardedFor(header string) []string {
+	// Split the X-Forwarded-For header by comma and strip any whitespace
+	parts := strings.Split(header, ",")
+	for i, part := range parts {
+		parts[i] = strings.TrimSpace(part)
+	}
+	return parts
+}
+
+func parseHostName(host string) (string, error) {
+	if idx := strings.Index(host, ":"); idx != -1 {
+		return host[:idx], nil
+	}
+	return host, nil
+}
+
+func parseIP(remoteAddr string) (string, error) {
+	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
+		return remoteAddr[:idx], nil
+	}
+	return remoteAddr, nil
+}
+
+func isXhr(xRequestedWith string) bool {
+	return strings.EqualFold(xRequestedWith, "XMLHttpRequest")
+}
+
+func parseCookies(cookies []*http.Cookie) map[string]string {
+	cookieMap := make(map[string]string)
+	for _, cookie := range cookies {
+		cookieMap[cookie.Name] = cookie.Value
+	}
+	return cookieMap
+}
+
+func parseQuery(query url.Values) map[string]string {
+	queryMap := make(map[string]string)
+	for key, values := range query {
+		queryMap[key] = values[0] // Assuming there's at least one value
+	}
+	return queryMap
+}
+
+func parseParams(params httprouter.Params) map[string]string {
+	paramMap := make(map[string]string)
+	for _, param := range params {
+		paramMap[param.Key] = param.Value
+	}
+	return paramMap
 }
 
 // JSON marshals the request body into the given interface.
@@ -141,40 +203,59 @@ type Body struct {
 // given interface is not a pointer.
 func (body *Body) JSON(dest interface{}) error {
 
-	if body.req.Header.Get("Content-Type") != "" {
-		value, _ := header.ParseValueAndParams(body.req.Header, "Content-Type")
-		if value != "application/json" {
-			return Error{http.StatusUnsupportedMediaType, "unsupported media type, expected 'application/json'"}
-		}
+	if dest == nil {
+		return Error{http.StatusBadRequest, "destination interface is nil"}
+	}
+
+	contentType := body.req.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/json") {
+		return Error{http.StatusUnsupportedMediaType, "unsupported media type, expected 'application/json'"}
 	}
 
 	bdy, err := io.ReadAll(body.req.Body)
 	if err != nil {
-		return errors.New("error reading json payload")
+		return Error{http.StatusInternalServerError, "error reading JSON payload: " + err.Error()}
 	}
-	return json.Unmarshal(bdy, dest)
+	defer body.req.Body.Close()
+
+	err = json.Unmarshal(bdy, dest)
+
+	if err != nil {
+		return Error{http.StatusBadRequest, "error unmarshalling JSON: " + err.Error()}
+	}
+
+	return nil
 }
 
 // Text returns the request body as a string.
 func (body *Body) Text() (string, error) {
-	bdy, err := io.ReadAll(body.req.Body)
+	reader := bufio.NewReader(body.req.Body)
+	defer body.req.Body.Close() // Ensure the body is closed to prevent resource leaks
+
+	var b strings.Builder
+	_, err := io.Copy(&b, reader)
 	if err != nil {
-		return "", errors.New("error reading text payload")
+		return "", errors.New("error reading text payload: " + err.Error())
 	}
 
-	return string(bdy), nil
+	return b.String(), nil
 }
 
 // FormData returns the body form data, expects request sent with `x-www-form-urlencoded` header
-func (body *Body) FormData() (map[string]interface{}, error) {
-	if err := body.req.ParseForm(); err != nil {
-		return nil, err
+func (body *Body) FormData() (map[string][]string, error) {
+	// Checking the Content-Type of the request
+	if !strings.HasPrefix(body.req.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		return nil, Error{http.StatusUnsupportedMediaType, "Content-Type must be application/x-www-form-urlencoded"}
 	}
 
-	data := make(map[string]interface{})
+	if err := body.req.ParseForm(); err != nil {
+		return nil, errors.New("failed to parse form data: " + err.Error())
+	}
+
+	data := make(map[string][]string)
 
 	for key, value := range body.req.Form {
-		data[key] = value[0]
+		data[key] = value // Now all values for each key are kept
 	}
 
 	return data, nil
@@ -187,10 +268,13 @@ func checkFreshness(req *http.Request, w http.ResponseWriter) bool {
 	return fresh.IsFresh(req.Header, w.Header())
 }
 
-// Accepts returns the value of the incoming request’s “Accept” HTTP header field
-// the first match is returned.
-// TODO: implement
+// Accepts checks if the specified mine types are acceptable, based on the request’s Accept HTTP header field.
+// The method returns the best match, or if none of the specified mine types is acceptable, returns "".
 func (req *Request) Accepts(mime ...string) string {
+
+	if len(mime) == 0 {
+		return ""
+	}
 
 	return ""
 }
@@ -246,12 +330,12 @@ func parseAccept(header string) []string {
 	for _, accept := range accepts {
 		accept = strings.Split(accept, ";")[0]
 
-		// if the accept is a wildcard, we can just return it
+		// if  accept is a wildcard, we can just return it
 		if accept == "*" {
 			return []string{"*"}
 		}
 
-		// if the accept is a valid mime type, add it to the accepted slice
+		// if accept is a valid mime type, add it to the accepted slice
 		if media, _, err := mime.ParseMediaType(accept); err == nil {
 
 			// if the media type is a wildcard, we can just return it
