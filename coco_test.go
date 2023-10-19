@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/noelukwa/coco/testutils"
+	"github.com/tobolabs/coco/testutils"
 
-	"github.com/noelukwa/coco"
+	"github.com/tobolabs/coco"
 )
 
 func TestCocoApp(t *testing.T) {

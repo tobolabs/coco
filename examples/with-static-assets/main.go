@@ -5,7 +5,7 @@ import (
 	"embed"
 	"log"
 
-	"github.com/noelukwa/coco"
+	"github.com/tobolabs/coco"
 )
 
 var (

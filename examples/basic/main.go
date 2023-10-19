@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 
-	"github.com/noelukwa/coco"
+	"github.com/tobolabs/coco"
 )
 
 func main() {
@@ -33,11 +34,34 @@ func main() {
 	fmt.Printf("Disabled: %v\n", app.Disabled("x-powered-by"))
 
 	app.Get("/chekme", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
+
+		res.Cookie(&http.Cookie{
+			Name:  "greeting",
+			Value: "Ser",
+		})
+		fmt.Printf("OriginalUrl: %s baseUrl %s\n", req.OriginalURL, req.BaseURL)
+		fmt.Printf("hostname: %s  ip: %s ips: %v\n  ", req.HostName, req.Ip, req.Ips)
 		res.Send("Checkme")
 	})
 
 	app.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		log.Println("Middleware 0")
+		greeting := req.Cookies["greeting"]
+
+		if greeting != "" {
+			fmt.Println("say hello to a ser!")
+		}
+
+		isJson := req.Is("json/*")
+		fmt.Printf("isJson: %v\n", isJson)
+
+		isText := req.Is("text/*")
+		fmt.Printf("isText: %v\n", isText)
+
+		isHtml := req.Is("html")
+		fmt.Printf("isHtml: %v\n", isHtml)
+
 		next(res, req)
 	})
 
@@ -65,6 +89,7 @@ func main() {
 	})
 
 	userRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
 		res.Send("Hello User")
 	})
 
@@ -85,17 +110,20 @@ func main() {
 	})
 
 	profileRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
 		res.Send("Hello User Profile")
 	})
 
 	userRouter.Get("/profile/settings", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		fmt.Println(req.Path)
+		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
 		res.Send("Hello User")
 	})
 
 	socialRouter := userRouter.Router("social")
 
 	socialRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
 		res.Send("Hello User Social")
 
 	})

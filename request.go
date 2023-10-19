@@ -2,13 +2,16 @@ package coco
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-http-utils/fresh"
@@ -22,6 +25,11 @@ type Error struct {
 
 func (e Error) Error() string {
 	return e.Message
+}
+
+type Range struct {
+	Start int64
+	End   int64
 }
 
 type Request struct {
@@ -134,7 +142,6 @@ func newRequest(r *http.Request, w http.ResponseWriter, params httprouter.Params
 func parseSubdomains(host string, subdomainOffset int) []string {
 	parts := strings.Split(host, ".")
 
-	// Ensure there are enough parts to slice
 	if len(parts) <= subdomainOffset {
 		return nil
 	}
@@ -308,15 +315,85 @@ func (req *Request) Get(name string, defaultValue string) string {
 // Is returns true if the incoming request’s “Content-Type” HTTP header field
 // matches the given mime type.
 func (req *Request) Is(mime string) bool {
-	return false
+	contentType := req.r.Header.Get("Content-Type")
+	if contentType == "" {
+		return false
+	}
+
+	switch mime {
+	case "json":
+		mime = "application/json"
+	case "html":
+		mime = "text/html"
+	case "xml":
+		mime = "application/xml"
+	case "text":
+		mime = "text/plain"
+	}
+
+	mimeParts := strings.Split(mime, "/")
+	ctParts := strings.Split(contentType, "/")
+
+	if mimeParts[1] == "*" {
+		return strings.EqualFold(mimeParts[0], ctParts[0])
+	}
+
+	return strings.EqualFold(mime, contentType)
 }
 
 // Range returns the first range found in the request’s “Range” header field.
 // If the “Range” header field is not present or the range is unsatisfiable,
 // nil is returned.
-// func (req *Request) Range(size int64) *header.Range {
-// 	return nil
-// }
+// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
+func (req *Request) Range(size int64) ([]Range, error) {
+	rangeHeader := req.r.Header.Get("Range")
+	if rangeHeader == "" {
+
+		return nil, nil
+	}
+
+	parts := strings.SplitN(rangeHeader, "=", 2)
+	if len(parts) != 2 || parts[0] != "bytes" {
+		return nil, fmt.Errorf("invalid range specifier")
+	}
+
+	rangesStr := strings.Split(parts[1], ",")
+	var ranges []Range
+	for _, rStr := range rangesStr {
+		rangeParts := strings.SplitN(rStr, "-", 2)
+		if len(rangeParts) != 2 {
+			return nil, fmt.Errorf("invalid range format")
+		}
+
+		startStr, endStr := strings.TrimSpace(rangeParts[0]), strings.TrimSpace(rangeParts[1])
+		start, startErr := strconv.ParseInt(startStr, 10, 64)
+		end, endErr := strconv.ParseInt(endStr, 10, 64)
+
+		if startErr != nil && endErr != nil {
+			return nil, fmt.Errorf("invalid range bounds")
+		}
+
+		if startErr != nil {
+			start = size - end
+			end = size - 1
+		} else if endErr != nil {
+			end = size - 1
+		}
+
+		if start > end || start < 0 || end >= size {
+			// invalid or unsatisfiable range, skip
+			continue
+		}
+
+		ranges = append(ranges, Range{Start: start, End: end})
+	}
+
+	if len(ranges) == 0 {
+		return nil, fmt.Errorf("unsatisfiable range")
+	}
+
+	return ranges, nil
+}
 
 // TODO: implement
 // parseAccept parses the Accept header field and returns a slice of strings accepted.
@@ -352,15 +429,6 @@ func parseAccept(header string) []string {
 	return accepted
 }
 
-// TODO: implement
-func convertToMimeTypes(mimeTypes []string) []string {
-	mimes := make([]string, 0, len(mimeTypes))
-	for _, mimeType := range mimeTypes {
-		if strings.Contains(mimeType, "/") {
-			mimes = append(mimes, mimeType)
-		} else {
-			mimes = append(mimes, mime.TypeByExtension(mimeType))
-		}
-	}
-	return mimes
+func (req *Request) Context() context.Context {
+	return req.r.Context()
 }

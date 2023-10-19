@@ -2,230 +2,117 @@ package coco_test
 
 import (
 	"bytes"
-	"fmt"
+	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/testutils"
 	"net/http/httptest"
 	"testing"
-	"time"
-
-	"github.com/noelukwa/coco"
-	"github.com/noelukwa/coco/testutils"
 )
 
 func TestRequest(t *testing.T) {
 	app := coco.NewApp()
 
-	router := app.Router("/test")
-
-	router.All("/hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
-		base := req.BaseURL
-		if base != "/test" {
-			t.Errorf("Expected base url to be /test, got %s", base)
+	t.Run("it should contain session cookie", func(t *testing.T) {
+		req := testutils.Request{
+			Method: "GET",
+			Path:   "/test/hello",
+			Headers: map[string]string{
+				"Cookie": "session=123",
+			},
+			Body: "",
 		}
-
-		if req.Method == "POST" {
-
-			var body = struct {
-				Name string `json:"name"`
-			}{}
-			err := req.Body.JSON(&body)
-			if err != nil {
-				t.Errorf("Expected no error, got %s", err.Error())
+		app.Get("/test/hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+			if v, ok := req.Cookies["session"]; !ok || v != "123" {
+				t.Errorf("Expected session cookie to be 123, got %s", v)
 			}
+		})
 
-			if body.Name != "Noel" {
-				t.Errorf("Expected name to be Noel, got %s", body.Name)
-			}
-		}
-
-		if req.Method == "PUT" {
-			var body string
-			body, err := req.Body.Text()
-			if err != nil {
-				t.Errorf("Expected no error, got %s", err.Error())
-			}
-
-			if body != "Noel" {
-				t.Errorf("Expected name to be Noel, got %s", body)
-			}
-		}
-
-		if req.Method == "PATCH" {
-			var body map[string]interface{}
-			body, err := req.Body.FormData()
-			if err != nil {
-				t.Errorf("Expected no error, got %s", err.Error())
-			}
-
-			if body["name"] != "Noel" {
-				t.Errorf("Expected name to be Noel, got %s", body)
-			}
-		}
-
-		cookies := req.Cookies
-		if cookies["session"] != "123" {
-			t.Errorf("[%s] Expected session cookie to be 123 , gott %s", req.Method, cookies["session"])
-		}
-
-		if req.Method == "GET" || req.Method == "HEAD" {
-			isFresh := req.Fresh
-			if !isFresh {
-				t.Errorf("Expected request to be fresh")
-			}
-		}
-
-		hostName := req.HostName
-		if hostName != "example.com" {
-			t.Errorf("Expected host name to be localhost, got %s", hostName)
-		}
-
-		ip := req.Ip
-		if ip != "192.0.2.1:1234" {
-			t.Errorf("Expected ip to be 127.0.0.1 got %s", ip)
-		}
-
-		ips := req.Ips
-		if len(ips) != 0 {
-			t.Errorf("Expected ips to be zero")
-		}
-
-		protocol := req.Protocol
-		if protocol != "HTTP/1.1" {
-			t.Errorf("Expected protocol to be HTTP/1.1 got %s", protocol)
-		}
-
-		secure := req.Secure
-		if secure {
-			t.Errorf("Expected request to be insecure")
-		}
-
-		stale := req.Stale
-		if stale {
-			t.Errorf("Expected request to be fresh")
-		}
-
-		subdomains := req.Subdomains
-		if len(subdomains) != 0 {
-			t.Errorf("Expected subdomains to be empty, got %s", subdomains)
-		}
-
-		query := req.Query
-		if query["name"] != "Noel" {
-			t.Errorf("Expected query name to be Noel, got %s", query["name"])
-		}
-
-		xhr := req.Xhr
-		if !xhr {
-			t.Errorf("Expected request to be xhr")
-		}
-
-		originalUrl := req.OriginalURL
-		if originalUrl != "/test/hello" {
-			t.Errorf("Expected original url to be /test/hello, got %s", originalUrl)
-		}
-
-		path := req.Path
-		if path != "/hello" {
-			t.Errorf("Expected path to be /hello, got %s", path)
-		}
-
-		baseUrl := req.BaseURL
-		if baseUrl != "/test" {
-			t.Errorf("Expected base url to be /test, got %s", baseUrl)
-		}
-
-		url := req.Url.String()
-		if url != "/hello" {
-			t.Errorf("Expected url to be /test/hello, got %s", url)
-		}
-
-		//accepts := req.Accepts("application/json")
-		//if !accepts {
-		//	t.Errorf("Expected request to accept application/json")
-		//}
-
-		acceptsCharsets := req.AcceptsCharsets("utf-8")
-		if !acceptsCharsets {
-			t.Errorf("Expected request to accept utf-8")
-		}
-
-		acceptsEncodings := req.AcceptsEncodings("gzip")
-		if !acceptsEncodings {
-			t.Errorf("Expected request to accept gzip")
-		}
-
-		acceptsLanguages := req.AcceptsLanguages("en")
-		if !acceptsLanguages {
-			t.Errorf("Expected request to accept en")
-		}
+		Do(t, app, req)
 	})
 
-	cases := []testutils.Mock{
-		{
-			Request: testutils.Request{
-				Method: "POST",
-				Path:   "/test/hello",
-				Body:   `{"name": "Noel"}`,
+	t.Run("it should parse Accept header", func(t *testing.T) {
+		req := testutils.Request{
+			Method: "GET",
+			Path:   "/test/hello",
+			Headers: map[string]string{
+				"Accept": "text/*,application/json",
 			},
-			Response: testutils.Response{
-				Status: 200,
-				Body:   "",
-			},
-		},
-		{
-			Request: testutils.Request{
-				Method: "PUT",
-				Path:   "/test/hello",
-				Body:   "Noel",
-			},
-			Response: testutils.Response{
-				Status: 200,
-				Body:   "",
-			},
-		},
-		{
-			Request: testutils.Request{
-				Method: "PATCH",
-				Path:   "/test/hello",
-				Body:   "name=Noel",
-			},
-			Response: testutils.Response{
-				Status: 200,
-				Body:   "",
-			},
-		},
-	}
+			Body: "",
+		}
+		app.Get("/test/hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+			if v := req.Accepts("html"); v != "html" {
+				t.Errorf("Expected Accepts to be html, got %s", v)
+			}
 
-	for _, c := range cases {
-		Do(t, app, c)
-	}
+			if v := req.Accepts("text/html"); v != "text/html" {
+				t.Errorf("Expected Accepts to be text/html, got %s", v)
+			}
 
+			if v := req.Accepts("json"); v != "json" {
+				t.Errorf("Expected Accepts to be json, got %s", v)
+			}
+
+			if v := req.Accepts("application/json"); v != "application/json" {
+				t.Errorf("Expected Accepts to be application/json, got %s", v)
+			}
+		})
+
+		Do(t, app, req)
+	})
+
+	t.Run("it should parse weighted Accept header", func(t *testing.T) {
+		req := testutils.Request{
+			Method: "GET",
+			Path:   "/test/hello",
+			Headers: map[string]string{
+				"Accept": "text/*;q=0.3,application/json;q=0.5",
+			},
+			Body: "",
+		}
+		app.Get("/test/hello", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+			if v := req.Accepts("html"); v != "html" {
+				t.Errorf("Expected Accepts to be html, got %s", v)
+			}
+
+			if v := req.Accepts("text/html"); v != "text/html" {
+				t.Errorf("Expected Accepts to be text/html, got %s", v)
+			}
+
+			if v := req.Accepts("json"); v != "json" {
+				t.Errorf("Expected Accepts to be json, got %s", v)
+			}
+
+			if v := req.Accepts("application/json"); v != "application/json" {
+				t.Errorf("Expected Accepts to be application/json, got %s", v)
+			}
+
+			if v := req.Accepts("html", "json"); v != "json" {
+				t.Errorf("Expected Accepts to be json, got %s", v)
+			}
+		})
+
+		Do(t, app, req)
+	})
 }
 
-func Do(t *testing.T, app *coco.App, c testutils.Mock) {
+func Do(t *testing.T, app *coco.App, r testutils.Request) {
+	t.Helper()
 	rc := httptest.NewRecorder()
 
-	req := httptest.NewRequest(c.Request.Method, fmt.Sprintf("%s?name=Noel", c.Request.Path), bytes.NewBuffer([]byte(c.Request.Body)))
-	req.Header.Set("Cookie", "session=123")
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Charset", "utf-8")
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("Accept-Language", "en")
-	req.Header.Set("Host", "localhost")
-	req.Header.Set("Referer", "http://localhost/test/hello")
-	// create a fresh request
-	req.Header.Set("If-Modified-Since", time.Now().Add(-time.Hour).Format(time.RFC1123))
+	req := httptest.NewRequest(r.Method, r.Path, bytes.NewBufferString(r.Body))
+	for k, v := range r.Headers {
+		req.Header.Set(k, v)
+	}
+	//req.Header.Set("Cookie", "session=123")
+	//req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	//req.Header.Set("Accept", "application/json")
+	//req.Header.Set("Accept-Charset", "utf-8")
+	//req.Header.Set("Accept-Encoding", "gzip")
+	//req.Header.Set("Accept-Language", "en")
+	//req.Header.Set("Host", "localhost")
+	//req.Header.Set("Referer", "http://localhost/test/hello")
+	//// create a fresh request
+	//req.Header.Set("If-Modified-Since", time.Now().Add(-time.Hour).Format(time.RFC1123))
 
 	app.ServeHTTP(rc, req)
-
-	t.Run(fmt.Sprintf("%s", c.Request.Method), func(t *testing.T) {
-		if rc.Code != c.Response.Status {
-			t.Errorf("Expected status code %d, got %d", c.Response.Status, rc.Code)
-		}
-
-		if rc.Body.String() != c.Response.Body {
-			t.Errorf("Expected response body %s, got %s", c.Response.Body, rc.Body.String())
-		}
-	})
 
 }

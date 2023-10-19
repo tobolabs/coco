@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/noelukwa/coco"
+	"github.com/tobolabs/coco"
 )
 
 var (
