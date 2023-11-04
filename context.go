@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-type reqcontext struct {
+type context struct {
 	handlers  []Handler
 	templates map[string]*template.Template
 	req       *Request
@@ -13,19 +13,19 @@ type reqcontext struct {
 	accepted  []string
 }
 
-func (c *reqcontext) coco() *App {
+func (c *context) coco() *App {
 	return c.app
 }
 
-func (c *reqcontext) request() *http.Request {
+func (c *context) request() *http.Request {
 	return c.req.r
 }
 
 // next calls the next handler in the chain if there is one.
 // If there is no next handler, the request is terminated.
-func (c *reqcontext) next(rw Response, req *Request) {
+func (c *context) next(rw Response, req *Request) {
 	if len(c.handlers) == 0 {
-		http.NotFound(rw.w, c.request())
+		http.NotFound(rw.w, req.r)
 		return
 	}
 
