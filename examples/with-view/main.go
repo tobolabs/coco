@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"log"
@@ -41,7 +40,7 @@ func main() {
 		rw.Render("dash/index", nil)
 	})
 
-	if err := app.Listen(":8040", context.Background()); err != nil {
+	if err := app.Listen(":8040"); err != nil {
 		log.Fatal(err)
 	}
 

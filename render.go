@@ -29,16 +29,17 @@ func (a *App) LoadTemplates(fs fs.FS, config *TemplateConfig) (err error) {
 		a.templates = make(map[string]*template.Template)
 	}
 
+	var tmpst *tempest.Tempest
 	if config != nil {
-		a.templates, err = tempest.WithConfig(&tempest.Config{
+		tmpst = tempest.WithConfig(&tempest.Config{
 			Layout:      config.Layout,
 			IncludesDir: config.IncludesDir,
 			Ext:         config.Ext,
-		}).LoadFS(fs)
-
-		return
+		})
 	} else {
-		a.templates, err = tempest.New().LoadFS(fs)
-		return
+		tmpst = tempest.New()
 	}
+
+	a.templates, err = tmpst.LoadFS(fs)
+	return err
 }

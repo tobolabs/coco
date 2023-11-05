@@ -1,8 +1,7 @@
 package coco
 
 import (
-	"bufio"
-	"context"
+	coreContext "context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// Error is an error type that is returned when an error occurs while handling a request.
 type Error struct {
 	Code    int
 	Message string
@@ -27,6 +27,7 @@ func (e Error) Error() string {
 	return e.Message
 }
 
+// Range represents a byte range.
 type Range struct {
 	Start int64
 	End   int64
@@ -149,13 +150,8 @@ func parseSubdomains(host string, subdomainOffset int) []string {
 	return parts[:len(parts)-subdomainOffset]
 }
 
-func (a *App) IsTrustProxyEnabled() bool {
-	return a.settings["trust proxy"].(bool)
-}
-
 // parseXForwardedFor parses the X-Forwarded-For header to extract IP addresses
 func parseXForwardedFor(header string) []string {
-	// Split the X-Forwarded-For header by comma and strip any whitespace
 	parts := strings.Split(header, ",")
 	for i, part := range parts {
 		parts[i] = strings.TrimSpace(part)
@@ -205,69 +201,6 @@ func parseParams(params httprouter.Params) map[string]string {
 	return paramMap
 }
 
-// JSON marshals the request body into the given interface.
-// It returns an error if the request body is not a valid JSON or if the
-// given interface is not a pointer.
-func (body *Body) JSON(dest interface{}) error {
-
-	if dest == nil {
-		return Error{http.StatusBadRequest, "destination interface is nil"}
-	}
-
-	contentType := body.req.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "application/json") {
-		return Error{http.StatusUnsupportedMediaType, "unsupported media type, expected 'application/json'"}
-	}
-
-	bdy, err := io.ReadAll(body.req.Body)
-	if err != nil {
-		return Error{http.StatusInternalServerError, "error reading JSON payload: " + err.Error()}
-	}
-	defer body.req.Body.Close()
-
-	err = json.Unmarshal(bdy, dest)
-
-	if err != nil {
-		return Error{http.StatusBadRequest, "error unmarshalling JSON: " + err.Error()}
-	}
-
-	return nil
-}
-
-// Text returns the request body as a string.
-func (body *Body) Text() (string, error) {
-	reader := bufio.NewReader(body.req.Body)
-	defer body.req.Body.Close() // Ensure the body is closed to prevent resource leaks
-
-	var b strings.Builder
-	_, err := io.Copy(&b, reader)
-	if err != nil {
-		return "", errors.New("error reading text payload: " + err.Error())
-	}
-
-	return b.String(), nil
-}
-
-// FormData returns the body form data, expects request sent with `x-www-form-urlencoded` header
-func (body *Body) FormData() (map[string][]string, error) {
-	// Checking the Content-Type of the request
-	if !strings.HasPrefix(body.req.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
-		return nil, Error{http.StatusUnsupportedMediaType, "Content-Type must be application/x-www-form-urlencoded"}
-	}
-
-	if err := body.req.ParseForm(); err != nil {
-		return nil, errors.New("failed to parse form data: " + err.Error())
-	}
-
-	data := make(map[string][]string)
-
-	for key, value := range body.req.Form {
-		data[key] = value // Now all values for each key are kept
-	}
-
-	return data, nil
-}
-
 func checkFreshness(req *http.Request, w http.ResponseWriter) bool {
 	if req.Method != "GET" && req.Method != "HEAD" {
 		return false
@@ -275,33 +208,95 @@ func checkFreshness(req *http.Request, w http.ResponseWriter) bool {
 	return fresh.IsFresh(req.Header, w.Header())
 }
 
-// Accepts checks if the specified mine types are acceptable, based on the request’s Accept HTTP header field.
-// The method returns the best match, or if none of the specified mine types is acceptable, returns "".
-func (req *Request) Accepts(mime ...string) string {
+// JSONError is an error type that is returned when the request body is not a valid JSON.
+type JSONError struct {
+	Status  int
+	Message string
+}
 
-	if len(mime) == 0 {
-		return ""
+func (e JSONError) Error() string {
+	return fmt.Sprintf("JSON error (Status %d): %s", e.Status, e.Message)
+}
+
+// JSON marshals the request body into the given interface.
+// It returns an error if the request body is not a valid JSON or if the
+// given interface is not a pointer.
+func (body *Body) JSON(dest interface{}) error {
+	if dest == nil {
+		return JSONError{http.StatusBadRequest, "Destination interface is nil"}
 	}
 
-	return ""
+	contentType := body.req.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/json") {
+		return JSONError{http.StatusUnsupportedMediaType, "Unsupported media type, expected 'application/json'"}
+	}
+
+	bdy, err := io.ReadAll(body.req.Body)
+	if err != nil {
+		return JSONError{http.StatusBadRequest, "Error reading JSON payload: " + err.Error()}
+	}
+
+	if err := body.req.Body.Close(); err != nil {
+		return JSONError{http.StatusInternalServerError, "Error closing request body: " + err.Error()}
+	}
+
+	if err := json.Unmarshal(bdy, dest); err != nil {
+		return JSONError{http.StatusBadRequest, "Error unmarshalling JSON: " + err.Error()}
+	}
+
+	return nil
 }
 
-// AcceptsCharsets returns true if the incoming request’s “Accept-Charset” HTTP header field
-// includes the given charset.
-func (req *Request) AcceptsCharsets(charset string) bool {
-	return false
+// Text returns the request body as a string.
+func (body *Body) Text() (string, error) {
+	b, err := io.ReadAll(body.req.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading text payload: %w", err)
+	}
+
+	if err := body.req.Body.Close(); err != nil {
+		return "", fmt.Errorf("error closing request body: %w", err)
+	}
+
+	return string(b), nil
 }
 
-// AcceptsEncodings returns true if the incoming request’s “Accept-Encoding” HTTP header field
-// includes the given encoding.
-func (req *Request) AcceptsEncodings(encoding string) bool {
-	return false
+// FormData returns the body form data, expects request sent with `x-www-form-urlencoded` header or
+func (body *Body) FormData() (map[string][]string, error) {
+	if body.req.Body == nil {
+		return nil, errors.New("request body is nil")
+	}
+	defer body.req.Body.Close()
+
+	contentType, _, err := mime.ParseMediaType(body.req.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Content-Type header: %w", err)
+	}
+
+	if contentType != "application/x-www-form-urlencoded" {
+		return nil, fmt.Errorf("unsupported Content-Type: %s", contentType)
+	}
+
+	if err := body.req.ParseForm(); err != nil {
+		return nil, fmt.Errorf("failed to parse form data: %w", err)
+	}
+
+	data := make(map[string][]string)
+	for key, values := range body.req.Form {
+		data[key] = make([]string, len(values))
+		copy(data[key], values)
+	}
+
+	return data, nil
 }
 
-// AcceptsLanguages returns true if the incoming request’s “Accept-Language” HTTP header field
-// includes the given language.
-func (req *Request) AcceptsLanguages(lang string) bool {
-	return false
+func (a *App) IsTrustProxyEnabled() bool {
+	return a.settings["trust proxy"].(bool)
+}
+
+func (req *Request) Cookie(name string) (value string, exists bool) {
+	value, exists = req.Cookies[name]
+	return value, exists
 }
 
 // Get returns the value of param `name` when present or `defaultValue`.
@@ -342,46 +337,56 @@ func (req *Request) Is(mime string) bool {
 }
 
 // Range returns the first range found in the request’s “Range” header field.
-// If the “Range” header field is not present or the range is unsatisfiable,
-// nil is returned.
 // See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
 func (req *Request) Range(size int64) ([]Range, error) {
 	rangeHeader := req.r.Header.Get("Range")
 	if rangeHeader == "" {
-
-		return nil, nil
+		return nil, nil // No Range header is not an error, just no range requested
 	}
 
-	parts := strings.SplitN(rangeHeader, "=", 2)
-	if len(parts) != 2 || parts[0] != "bytes" {
+	if !strings.HasPrefix(rangeHeader, "bytes=") {
 		return nil, fmt.Errorf("invalid range specifier")
 	}
 
-	rangesStr := strings.Split(parts[1], ",")
+	rangesStr := strings.Split(rangeHeader[6:], ",")
 	var ranges []Range
 	for _, rStr := range rangesStr {
+		rStr = strings.TrimSpace(rStr)
+		if rStr == "" {
+			continue
+		}
+
 		rangeParts := strings.SplitN(rStr, "-", 2)
 		if len(rangeParts) != 2 {
 			return nil, fmt.Errorf("invalid range format")
 		}
 
 		startStr, endStr := strings.TrimSpace(rangeParts[0]), strings.TrimSpace(rangeParts[1])
-		start, startErr := strconv.ParseInt(startStr, 10, 64)
-		end, endErr := strconv.ParseInt(endStr, 10, 64)
+		var start, end int64
+		var err error
 
-		if startErr != nil && endErr != nil {
-			return nil, fmt.Errorf("invalid range bounds")
+		if startStr != "" {
+			start, err = strconv.ParseInt(startStr, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid range start value")
+			}
 		}
 
-		if startErr != nil {
+		if endStr != "" {
+			end, err = strconv.ParseInt(endStr, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid range end value")
+			}
+		}
+
+		if startStr == "" {
 			start = size - end
 			end = size - 1
-		} else if endErr != nil {
+		} else if endStr == "" {
 			end = size - 1
 		}
 
 		if start > end || start < 0 || end >= size {
-			// invalid or unsatisfiable range, skip
 			continue
 		}
 
@@ -389,46 +394,41 @@ func (req *Request) Range(size int64) ([]Range, error) {
 	}
 
 	if len(ranges) == 0 {
-		return nil, fmt.Errorf("unsatisfiable range")
+		return nil, fmt.Errorf("no satisfiable range found")
 	}
 
 	return ranges, nil
 }
 
-// TODO: implement
-// parseAccept parses the Accept header field and returns a slice of strings accepted.
-func parseAccept(header string) []string {
-
-	accepts := strings.Split(header, ",")
-	accepted := make([]string, 0, len(accepts))
-
-	// iterate over the accepts and parse them, then add them to the accepted slice
-	// symbols are not supported, so we can just split on ';'
-	for _, accept := range accepts {
-		accept = strings.Split(accept, ";")[0]
-
-		// if  accept is a wildcard, we can just return it
-		if accept == "*" {
-			return []string{"*"}
-		}
-
-		// if accept is a valid mime type, add it to the accepted slice
-		if media, _, err := mime.ParseMediaType(accept); err == nil {
-
-			// if the media type is a wildcard, we can just return it
-			if strings.Contains(media, "/*") {
-				return []string{media}
-			}
-
-			// if the media type is a valid mime type, add it to the accepted slice
-			if _, _, err := mime.ParseMediaType(media); err == nil {
-				accepted = append(accepted, media)
-			}
-		}
-	}
-	return accepted
-}
-
-func (req *Request) Context() context.Context {
+func (req *Request) Context() coreContext.Context {
 	return req.r.Context()
 }
+
+//// Accepts checks if the specified mine types are acceptable, based on the request’s Accept HTTP header field.
+//// The method returns the best match, or if none of the specified mine types is acceptable, returns "".
+//func (req *Request) Accepts(mime ...string) string {
+//
+//	if len(mime) == 0 {
+//		return ""
+//	}
+//
+//	return ""
+//}
+
+//// AcceptsCharsets returns true if the incoming request’s “Accept-Charset” HTTP header field
+//// includes the given charset.
+//func (req *Request) AcceptsCharsets(charset string) bool {
+//	return false
+//}
+//
+//// AcceptsEncodings returns true if the incoming request’s “Accept-Encoding” HTTP header field
+//// includes the given encoding.
+//func (req *Request) AcceptsEncodings(encoding string) bool {
+//	return false
+//}
+
+//// AcceptsLanguages returns true if the incoming request’s “Accept-Language” HTTP header field
+//// includes the given language.
+//func (req *Request) AcceptsLanguages(lang string) bool {
+//	return false
+//}
