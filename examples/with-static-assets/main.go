@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"embed"
+	"io/fs"
 	"log"
 
 	"github.com/tobolabs/coco"
@@ -24,13 +24,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app.Static(assets, "web/*file")
+	staticFiles, err := fs.Sub(assets, "web/assets")
+	if err != nil {
+		log.Fatalf("Failed to create sub FS: %v", err)
+	}
+
+	// Serve static assets on /static; e.g. /static/css/main.css maps to web/assets/css/main.css
+	app.Static(staticFiles, "/static")
 
 	app.Get("/", func(rw coco.Response, req *coco.Request, next coco.NextFunc) {
 		rw.Render("views/home", nil)
 	})
 
-	if err := app.Listen(":8980", context.Background()); err != nil {
+	if err := app.Listen(":8980"); err != nil {
 		log.Fatal(err)
 	}
 }

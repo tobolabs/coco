@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,10 +12,20 @@ func main() {
 	app := coco.NewApp()
 
 	app.Param("id", func(res coco.Response, req *coco.Request, next coco.NextFunc, param string) {
-		log.Println("Param Middleware")
+		fmt.Printf("Param Middleware: %s\n", param)
 		next(res, req)
 	})
 
+	app.Post("/post", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+
+		data, err := req.Body.FormData()
+		if err != nil {
+			res.Send(err.Error())
+			return
+		}
+		res.JSON(data)
+	})
+	
 	// Application.All ✅
 	app.All("/generic", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		res.Send("Generic")
@@ -34,24 +43,15 @@ func main() {
 	fmt.Printf("Disabled: %v\n", app.Disabled("x-powered-by"))
 
 	app.Get("/chekme", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
-		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
 
 		res.Cookie(&http.Cookie{
 			Name:  "greeting",
 			Value: "Ser",
 		})
-		fmt.Printf("OriginalUrl: %s baseUrl %s\n", req.OriginalURL, req.BaseURL)
-		fmt.Printf("hostname: %s  ip: %s ips: %v\n  ", req.HostName, req.Ip, req.Ips)
 		res.Send("Checkme")
 	})
 
 	app.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
-		log.Println("Middleware 0")
-		greeting := req.Cookies["greeting"]
-
-		if greeting != "" {
-			fmt.Println("say hello to a ser!")
-		}
 
 		isJson := req.Is("json/*")
 		fmt.Printf("isJson: %v\n", isJson)
@@ -128,7 +128,16 @@ func main() {
 
 	})
 
-	if err := app.Listen(":3003", context.Background()); err != nil {
+	srv := &http.Server{
+		Addr:    ":3003",
+		Handler: app.GetHandler(),
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err.Error())
 	}
+	//
+	//if err := app.Listen(":3003"); err != nil {
+	//	log.Fatal(err.Error())
+	//}
 }
