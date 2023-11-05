@@ -232,7 +232,6 @@ func (r *Route) Static(root fs.FS, path string) {
 }
 
 // Param calls the given handler when the route param matches the given param.
-// The handler is passed the value of the param.
 func (r *Route) Param(param string, handler ParamHandler) {
 
 	if r.paramHandlers == nil {
