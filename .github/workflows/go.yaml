@@ -44,12 +44,8 @@ jobs:
           go-version: '1.18'
       - name: Get dependencies
         run: go mod download
-      - name: Print module path
-        run: go list -m
-      - name: Tag the release
+      - name: Update Go module index
         run: |
           VERSION=$(go list -m | awk '{print $2}')
-          git tag $VERSION
-          git push origin $VERSION
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOPROXY=proxy.golang.org go list -m github.com/tobolabs/coco@$VERSION
+          
