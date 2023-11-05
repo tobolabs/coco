@@ -21,7 +21,6 @@ const (
 	PATCH
 	OPTIONS
 	HEAD
-	ALL
 )
 
 var methods = map[allowedMethod]string{
@@ -34,12 +33,15 @@ var methods = map[allowedMethod]string{
 	HEAD:    "HEAD",
 }
 
+// Path is a type that represents a path in the application.
 type Path struct {
 	name     string
 	handlers []Handler
 	method   string
 }
 
+// Route is a type that represents a route in the application.
+// It is equivalent to an express.Router instance.
 type Route struct {
 	base   string
 	hr     *httprouter.Router
@@ -50,7 +52,6 @@ type Route struct {
 	paramHandlers map[string]ParamHandler
 	app           *App
 
-	// gotta flex my data structures knowledge, so allow me cook ✋🏽
 	cachedMiddleware []Handler
 	rootNode         bool
 	children         map[string]*Route
@@ -65,11 +66,12 @@ func (r *Route) printRoutes(prefix string) {
 	}
 }
 
-// Router is equivalent of app.route(path), returns a new instance of route
+// Router is equivalent of app.route(path), returns a new instance of Route
 func (r *Route) Router(path string) *Route {
 	return r.app.newRoute(path, false, r)
 }
 
+// Use adds middleware to the route.
 func (r *Route) Use(middleware ...Handler) *Route {
 	r.middleware = append(r.middleware, middleware...)
 	return r
@@ -81,7 +83,7 @@ func (r *Route) combineHandlers(handlers ...Handler) []Handler {
 	return append(middlewares, handlers...)
 }
 
-func (a *App) pathify(p string) string {
+func (a *App) makePath(p string) string {
 	if p == "" {
 		p = "/"
 	}
@@ -95,7 +97,7 @@ func (a *App) pathify(p string) string {
 
 func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 	var r Route
-	cleanPath := a.pathify(path)
+	cleanPath := a.makePath(path)
 
 	if isRoot {
 		r = Route{
@@ -122,7 +124,7 @@ func (a *App) newRoute(path string, isRoot bool, parent *Route) *Route {
 	return &r
 }
 
-func (r *Route) getfullPath(path string) string {
+func (r *Route) getFullPath(path string) string {
 	var builder strings.Builder
 
 	builder.WriteString(strings.TrimSuffix(r.base, "/"))
@@ -135,31 +137,24 @@ func (r *Route) getfullPath(path string) string {
 }
 
 func (r *Route) fetchMiddleware() []Handler {
-
-	if len(r.cachedMiddleware) > 0 {
-		return r.cachedMiddleware
+	if r.rootNode {
+		return r.middleware
 	}
 
-	middleware := append([]Handler{}, r.middleware...)
-
-	current := r.parent
-	for current != nil {
-		if len(current.cachedMiddleware) > 0 {
-			middleware = append(middleware, current.cachedMiddleware...)
-			break
+	if r.cachedMiddleware == nil {
+		var middleware []Handler
+		for current := r; current != nil; current = current.parent {
+			middleware = append(current.middleware, middleware...)
 		}
-		middleware = append(middleware, current.middleware...)
-		current = current.parent
+		r.cachedMiddleware = middleware
 	}
 
-	r.cachedMiddleware = middleware
-
-	return middleware
+	return r.cachedMiddleware
 }
 
 func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
 	newPath := Path{
-		name:     r.getfullPath(path),
+		name:     r.getFullPath(path),
 		handlers: handlers,
 		method:   httpMethod,
 	}
@@ -170,16 +165,13 @@ func (r *Route) handle(httpMethod string, path string, handlers []Handler) {
 	r.paths = append(r.paths, newPath)
 }
 
-func execParamChain(ctx *reqcontext, params httprouter.Params, handlers map[string]ParamHandler) {
+func execParamChain(ctx *context, params httprouter.Params, handlers map[string]ParamHandler) {
 	if len(handlers) == 0 {
 		return
 	}
 
-	fmt.Println("executing param chain")
-
 	pending := make([]Handler, 0)
 	for _, p := range params {
-		fmt.Printf("executing param: %s\n", p.Key)
 		if h, ok := handlers[p.Key]; ok {
 			fn := func(rw Response, req *Request, next NextFunc) {
 				h(rw, req, next, p.Value)
@@ -229,18 +221,12 @@ func (r *Route) All(path string, handlers ...Handler) *Route {
 	return r
 }
 
-func (r *Route) Group(path string, handlers ...Handler) *Route {
-	return &Route{
-		base:       r.base + path,
-		hr:         r.hr,
-		middleware: r.combineHandlers(handlers...),
-	}
-}
-
 func (r *Route) Static(root fs.FS, path string) {
+	strippedPath := "/" + strings.Trim(path, "/")
 	fileServer := http.FileServer(http.FS(root))
 
-	r.hr.GET(r.base+path, func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	r.hr.GET(strippedPath+"/*filepath", func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+		req.URL.Path = ps.ByName("filepath")
 		fileServer.ServeHTTP(w, req)
 	})
 }
