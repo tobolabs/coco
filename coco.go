@@ -74,12 +74,6 @@ func NewApp() (app *App) {
 //
 // app.listen(3000, () => {})
 func (a *App) Listen(addr string) error {
-
-	a.once.Do(func() {
-		a.configureRoutes()
-		a.handler = a.base
-	})
-
 	a.server = &http.Server{
 		Addr:    addr,
 		Handler: a,
@@ -89,9 +83,10 @@ func (a *App) Listen(addr string) error {
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if a.handler == nil {
+	a.once.Do(func() {
+		a.configureRoutes()
 		a.handler = a.base
-	}
+	})
 	a.handler.ServeHTTP(w, req)
 }
 
@@ -147,15 +142,6 @@ func (a *App) traverseAndConfigure(r *Route) {
 	for _, child := range r.children {
 		a.traverseAndConfigure(child)
 	}
-}
-
-// GetHandler returns the http.Handler for the App.
-func (a *App) GetHandler() http.Handler {
-	a.once.Do(func() {
-		a.configureRoutes()
-		a.handler = a.base
-	})
-	return a.handler
 }
 
 // Disable sets a setting to false.

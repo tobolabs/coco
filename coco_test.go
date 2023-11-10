@@ -113,7 +113,7 @@ func TestCocoApp(t *testing.T) {
 		}
 	})
 
-	server := httptest.NewServer(app.GetHandler())
+	server := httptest.NewServer(app)
 	defer server.Close()
 
 	testRouteMethod(t, server.URL, "GET", "/one", "1", 200)
