@@ -51,15 +51,36 @@ func main() {
    }
 }
 ```
-## **Installation**:
+
+## **Installation**
+
    To use coco in your Go project, you need to install it using Go modules:
 
    ```shell
    go get github.com/tobolabs/coco
    ```
- 
+
 **See [examples](../examples) for more.**
 
+## Configuration
+
+coco allows you to configure settings for your application. Common configurations include enabling trust proxy, specifying the environment mode, and more. You can use these settings to customize your application behavior.
+
+```go
+app.Enable("trust proxy")
+app.SetX("env", "production")
+```
+
+## Error Handling
+
+coco provides a structured way to handle errors, including error codes and descriptive error messages. Errors are returned as `JSONError` and can be handled uniformly in your application.
+
+```go
+err := app.Listen(":8080")
+if err != nil {
+    log.Fatalf("Server failed to start: %v", err)
+}
+```
 
 ## Contributing
 
@@ -82,8 +103,8 @@ Check the [GitHub repository](https://github.com/tobolabs/coco) for the latest u
 coco is inspired by [Express](https://expressjs.com/), a popular web framework for Node.js.
 At the core of Coco is httprouter, a fast HTTP router for Go by [Julien Schmidt](https://github.com/julienschmidt).
 
-
 ## Author
+
 - [Noel Ukwa](https://github.com/noelukwa)
 
 Happy coding with 🌴🚀
