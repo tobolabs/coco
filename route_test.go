@@ -23,7 +23,7 @@ func TestRoute_Use(t *testing.T) {
 		res.SendStatus(http.StatusOK)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	response, err := http.Get(srv.URL + "/")
@@ -57,7 +57,7 @@ func TestRoute_Head(t *testing.T) {
 		handlerCalled = true
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	req, err := http.NewRequest("HEAD", srv.URL+"/", nil)
@@ -67,7 +67,7 @@ func TestRoute_Head(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	app.base.ServeHTTP(w, req)
+	app.ServeHTTP(w, req)
 
 	if !handlerCalled {
 		t.Errorf("HEAD handler was not called")
@@ -100,7 +100,7 @@ func TestRoute_Static(t *testing.T) {
 		res.SendStatus(http.StatusOK)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	// Define test cases

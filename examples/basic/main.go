@@ -25,7 +25,7 @@ func main() {
 		}
 		res.JSON(data)
 	})
-	
+
 	// Application.All ✅
 	app.All("/generic", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		res.Send("Generic")
@@ -130,7 +130,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":3003",
-		Handler: app.GetHandler(),
+		Handler: app,
 	}
 
 	if err := srv.ListenAndServe(); err != nil {

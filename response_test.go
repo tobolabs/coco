@@ -30,7 +30,7 @@ func TestResponseAppend(t *testing.T) {
 	})
 
 	// Create a test server using the app's handler
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	// Make a request to the test server
@@ -63,7 +63,7 @@ func TestResponseAttachment(t *testing.T) {
 		res.Attachment("test.pdf")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-attachment")
@@ -91,7 +91,7 @@ func TestResponseCookie(t *testing.T) {
 		res.Cookie(cookie)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-cookie")
@@ -127,7 +127,7 @@ func TestResponseSignedCookie(t *testing.T) {
 		res.SignedCookie(cookie, secret)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-signed-cookie")
@@ -177,7 +177,7 @@ func TestResponseClearCookie(t *testing.T) {
 		res.ClearCookie("test")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/clear-cookie")
@@ -274,7 +274,7 @@ func TestDownload(t *testing.T) {
 				})
 			})
 
-			srv := httptest.NewServer(app.GetHandler())
+			srv := httptest.NewServer(app)
 			defer srv.Close()
 
 			resp, err := http.Get(srv.URL + "/download-" + tc.name)
@@ -460,7 +460,7 @@ func TestSendFile(t *testing.T) {
 			setup := tc.setupHandler(t, app)
 
 			defer setup.cleanup()
-			srv := httptest.NewServer(app.GetHandler())
+			srv := httptest.NewServer(app)
 			defer srv.Close()
 			resp, err := http.Get(srv.URL + setup.routePath)
 			if err != nil {
@@ -489,7 +489,7 @@ func TestResponseJSON(t *testing.T) {
 		res.JSON(map[string]string{"status": "ok"})
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-json")
@@ -510,7 +510,7 @@ func TestResponseSend(t *testing.T) {
 		res.Send("Hello World")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-send")
@@ -542,7 +542,7 @@ func TestResponseSet(t *testing.T) {
 		res.Send("Hello World")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-set")
@@ -563,7 +563,7 @@ func TestResponseSendStatus(t *testing.T) {
 		res.SendStatus(http.StatusNotFound)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-send-status")
@@ -584,7 +584,7 @@ func TestResponseStatus(t *testing.T) {
 		res.Status(http.StatusNotFound).Send("Not Found")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-response-status")
@@ -605,7 +605,7 @@ func TestResponseType(t *testing.T) {
 		res.Type("text/plain").Send("Hello World")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-response-type")
@@ -628,7 +628,7 @@ func TestResponseVary(t *testing.T) {
 		res.Send("Hello World")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-response-vary")
@@ -654,7 +654,7 @@ func TestResponseGet(t *testing.T) {
 		res.SendStatus(http.StatusOK)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	_, err := http.Get(srv.URL + "/test-response-get")
@@ -675,7 +675,7 @@ func TestResponseRedirect(t *testing.T) {
 		res.Redirect("/test-redirect")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-response-redirect")
@@ -698,7 +698,7 @@ func TestResponseLocation(t *testing.T) {
 		res.SendStatus(http.StatusOK)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-response-location")
@@ -735,7 +735,7 @@ func TestResponseRender(t *testing.T) {
 		res.Render("test", nil)
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/test-response-render")
@@ -761,13 +761,13 @@ func TestResponseStatusCode(t *testing.T) {
 			t.Errorf("Expected status code to be 401, got %d", res.StatusCode())
 		}
 	})
-	
+
 	app.Get("/test-response-status-code", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		res.Status(401)
 		res.Send("Unauthorized")
 	})
 
-	srv := httptest.NewServer(app.GetHandler())
+	srv := httptest.NewServer(app)
 	defer srv.Close()
 
 	_, err := http.Get(srv.URL + "/test-response-status-code")
