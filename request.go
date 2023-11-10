@@ -404,6 +404,10 @@ func (req *Request) Context() coreContext.Context {
 	return req.r.Context()
 }
 
+func (req *Request) SetContext(ctx coreContext.Context) {
+	req.r = req.r.WithContext(ctx)
+}
+
 //// Accepts checks if the specified mine types are acceptable, based on the request’s Accept HTTP header field.
 //// The method returns the best match, or if none of the specified mine types is acceptable, returns "".
 //func (req *Request) Accepts(mime ...string) string {

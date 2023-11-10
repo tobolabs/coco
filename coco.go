@@ -133,13 +133,12 @@ func (a *App) traverseAndConfigure(r *Route) {
 			if e != nil {
 				fmt.Printf("DEBUG: %v\n", e)
 			}
-			//accepts := parseAccept(req.Header.Get("Accept"))
 			ctx := &context{
 				handlers:  handlers,
 				templates: r.app.templates,
 				req:       request,
 			}
-			response := Response{w, ctx, 0}
+			response := Response{ww: wrapWriter(w), ctx: ctx}
 			execParamChain(ctx, p, r.paramHandlers)
 			ctx.next(response, request)
 		})
