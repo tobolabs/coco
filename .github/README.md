@@ -60,25 +60,6 @@ func main() {
  
 **See [examples](../examples) for more.**
 
-## Configuration
-
-coco allows you to configure settings for your application. Common configurations include enabling trust proxy, specifying the environment mode, and more. You can use these settings to customize your application behavior.
-
-```go
-app.Enable("trust proxy")
-app.SetX("env", "production")
-```
-
-## Error Handling
-
-coco provides a structured way to handle errors, including error codes and descriptive error messages. Errors are returned as `JSONError` and can be handled uniformly in your application.
-
-```go
-err := app.Listen(":8080")
-if err != nil {
-    log.Fatalf("Server failed to start: %v", err)
-}
-```
 
 ## Contributing
 
