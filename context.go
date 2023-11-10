@@ -25,7 +25,7 @@ func (c *context) request() *http.Request {
 // If there is no next handler, the request is terminated.
 func (c *context) next(rw Response, req *Request) {
 	if len(c.handlers) == 0 {
-		http.NotFound(rw.w, req.r)
+		http.NotFound(rw.ww, req.r)
 		return
 	}
 

@@ -1,6 +1,7 @@
 package coco
 
 import (
+	"bufio"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -9,17 +10,14 @@ import (
 	"fmt"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
-
-// VaryFieldNameRegex checks for valid field names for the Vary header as defined by RFC 7231.
-var VaryFieldNameRegex = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
 
 type DownloadOption struct {
 	MaxAge       int
@@ -46,25 +44,74 @@ var (
 )
 
 func (r *Response) setContentType(contentType string) {
-	if cty := r.w.Header().Get("Content-Type"); cty == "" {
-		r.w.Header().Set("Content-Type", contentType)
+	if cty := r.ww.Header().Get("Content-Type"); cty == "" {
+		r.ww.Header().Set("Content-Type", contentType)
 	}
 }
 
-type Response struct {
-	w      http.ResponseWriter
-	ctx    *context
-	status int
+type wrappedWriter struct {
+	http.ResponseWriter
+	statusCode        int
+	statusCodeWritten bool
+	hijacker          http.Hijacker
+	flusher           http.Flusher
 }
 
-func (r *Response) written() bool {
-	return r.status != 0
+func wrapWriter(original http.ResponseWriter) *wrappedWriter {
+	w := &wrappedWriter{ResponseWriter: original}
+	if h, ok := original.(http.Hijacker); ok {
+		w.hijacker = h
+	}
+	if f, ok := original.(http.Flusher); ok {
+		w.flusher = f
+	}
+	return w
+}
+
+func (w *wrappedWriter) WriteHeader(code int) {
+	if !w.statusCodeWritten {
+		w.statusCodeWritten = true
+		w.statusCode = code
+		w.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (w *wrappedWriter) Write(b []byte) (int, error) {
+	if !w.statusCodeWritten {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *wrappedWriter) _statusCode() int {
+	return w.statusCode
+}
+
+func (w *wrappedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+
+	if w.hijacker == nil {
+		return nil, nil, http.ErrHijacked
+	}
+	return w.hijacker.Hijack()
+}
+
+func (w *wrappedWriter) Flush() {
+	if w.flusher == nil {
+		return
+	}
+	w.flusher.Flush()
+}
+
+type Response struct {
+	ww     *wrappedWriter
+	ctx    *context
+	status int
 }
 
 // Append sets the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
 func (r *Response) Append(key, value string) *Response {
-	r.w.Header().Add(key, value)
+	r.ww.Header().Add(key, value)
 	return r
 }
 
@@ -82,16 +129,16 @@ func (r *Response) Attachment(filename string) *Response {
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
-		r.w.Header().Set("Content-Type", mimeType)
+		r.ww.Header().Set("Content-Type", mimeType)
 	}
 
-	r.w.Header().Set("Content-Disposition", contentDisposition)
+	r.ww.Header().Set("Content-Disposition", contentDisposition)
 	return r
 }
 
 // Cookie sets cookie name to value
 func (r *Response) Cookie(cookie *http.Cookie) *Response {
-	http.SetCookie(r.w, cookie)
+	http.SetCookie(r.ww, cookie)
 	return r
 }
 
@@ -102,14 +149,14 @@ func (r *Response) SignedCookie(cookie *http.Cookie, secret string) *Response {
 	signature := mac.Sum(nil)
 	encodedSignature := base64.StdEncoding.EncodeToString(signature)
 	cookie.Value = fmt.Sprintf("%s.%s", encodedSignature, cookie.Value)
-	http.SetCookie(r.w, cookie)
+	http.SetCookie(r.ww, cookie)
 	return r
 }
 
 // ClearCookie clears the cookie by setting the MaxAge to -1
 func (r *Response) ClearCookie(name string) *Response {
 	cookie := &http.Cookie{Name: name, MaxAge: -1}
-	http.SetCookie(r.w, cookie)
+	http.SetCookie(r.ww, cookie)
 	return r
 }
 
@@ -166,7 +213,7 @@ func (r *Response) SendFile(filePath, fileName string, options *DownloadOption, 
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
-	r.w.Header().Set("Content-Type", mimeType)
+	r.ww.Header().Set("Content-Type", mimeType)
 
 	if options.CacheControl {
 		cacheControlValues := []string{"public"}
@@ -178,23 +225,23 @@ func (r *Response) SendFile(filePath, fileName string, options *DownloadOption, 
 		if options.Immutable {
 			cacheControlValues = append(cacheControlValues, "immutable")
 		}
-		r.w.Header().Set("Cache-Control", strings.Join(cacheControlValues, ", "))
+		r.ww.Header().Set("Cache-Control", strings.Join(cacheControlValues, ", "))
 	}
 
 	if options.LastModified {
-		r.w.Header().Set("Last-Modified", fi.ModTime().Format(time.RFC1123))
+		r.ww.Header().Set("Last-Modified", fi.ModTime().Format(time.RFC1123))
 	}
 	if options.AcceptRanges {
-		r.w.Header().Set("Accept-Ranges", "bytes")
+		r.ww.Header().Set("Accept-Ranges", "bytes")
 	}
 	for key, value := range options.Headers {
-		r.w.Header().Set(key, value)
+		r.ww.Header().Set(key, value)
 	}
 
 	encodedFilename := url.PathEscape(fileName)
-	r.w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", encodedFilename))
+	r.ww.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", encodedFilename))
 
-	http.ServeContent(r.w, r.ctx.request(), fileName, fi.ModTime(), file)
+	http.ServeContent(r.ww, r.ctx.request(), fileName, fi.ModTime(), file)
 
 	cb(nil)
 }
@@ -203,14 +250,14 @@ func (r *Response) SendFile(filePath, fileName string, options *DownloadOption, 
 func (r *Response) JSON(v interface{}) *Response {
 	jsn, err := json.Marshal(v)
 	if err != nil {
-		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 		return r
 	}
 
 	r.Set("Content-Type", "application/json; charset=utf-8")
-	_, err = r.w.Write(jsn)
+	_, err = r.ww.Write(jsn)
 	if err != nil {
-		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 	}
 
 	return r
@@ -231,9 +278,9 @@ func (r *Response) Send(body interface{}) *Response {
 		return r.JSON(v)
 	}
 
-	_, err = r.w.Write(data)
+	_, err = r.ww.Write(data)
 	if err != nil {
-		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 	}
 
 	return r
@@ -247,30 +294,31 @@ func (r *Response) Set(key string, value string) *Response {
 			value += "; charset=utf-8"
 		}
 	}
-	r.w.Header().Set(key, value)
+	r.ww.Header().Set(key, value)
 	return r
 }
 
 // SendStatus sends the HTTP response status code.
 func (r *Response) SendStatus(statusCode int) *Response {
 	r.Set("Content-Type", "text/plain; charset=utf-8")
-	r.w.WriteHeader(statusCode)
-	_, err := r.w.Write([]byte(http.StatusText(statusCode)))
+	r.ww.WriteHeader(statusCode)
+	_, err := r.ww.Write([]byte(http.StatusText(statusCode)))
 	if err != nil {
-		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 	}
 	return r
 }
 
 // Status sets the HTTP status for the response.
 func (r *Response) Status(code int) *Response {
-	r.w.WriteHeader(code)
+	r.ww.WriteHeader(code)
+	r.ww.WriteHeader(code)
 	return r
 }
 
 // Get returns the HTTP response header specified by field.
 func (r *Response) Get(key string) string {
-	return r.w.Header().Get(http.CanonicalHeaderKey(key))
+	return r.ww.Header().Get(http.CanonicalHeaderKey(key))
 }
 
 // Location sets the response Location HTTP header to the specified path parameter.
@@ -347,14 +395,18 @@ func (r *Response) Vary(field string) *Response {
 func (r *Response) Render(name string, data interface{}) *Response {
 	tmpl, ok := r.ctx.templates[name]
 	if !ok {
-		http.Error(r.w, fmt.Sprintf("template %s not found", name), http.StatusInternalServerError)
+		http.Error(r.ww, fmt.Sprintf("template %s not found", name), http.StatusInternalServerError)
 		return r
 	}
 
 	r.Set("Content-Type", "text/html; charset=utf-8")
-	err := tmpl.Execute(r.w, data)
+	err := tmpl.Execute(r.ww, data)
 	if err != nil {
-		http.Error(r.w, err.Error(), http.StatusInternalServerError)
+		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 	}
 	return r
+}
+
+func (r *Response) StatusCode() int {
+	return r.ww._statusCode()
 }

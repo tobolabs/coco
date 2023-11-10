@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/tobolabs/coco"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -748,4 +749,29 @@ func TestResponseRender(t *testing.T) {
 
 	expectedBody := "<h1>Hello World</h1>"
 	assert.Equal(t, expectedBody, string(body))
+}
+
+func TestResponseStatusCode(t *testing.T) {
+	app := coco.NewApp()
+
+	app.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		next(res, req)
+		log.Printf("Status code: %d", res.StatusCode())
+		if res.StatusCode() != 401 {
+			t.Errorf("Expected status code to be 401, got %d", res.StatusCode())
+		}
+	})
+	
+	app.Get("/test-response-status-code", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Status(401)
+		res.Send("Unauthorized")
+	})
+
+	srv := httptest.NewServer(app.GetHandler())
+	defer srv.Close()
+
+	_, err := http.Get(srv.URL + "/test-response-status-code")
+	if err != nil {
+		t.Fatalf("Failed to make GET request: %v", err)
+	}
 }
