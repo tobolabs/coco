@@ -19,7 +19,6 @@ Use specific prefixes for your commit titles:
 - **docs**: Making changes to documentation.
 - **fmt**: Enhancing code format and style.
 
-
 ### Examples
 - `feature: add new feature`
 - `refactor: improve existing code`
@@ -31,7 +30,10 @@ Use specific prefixes for your commit titles:
 ## Supporting coco
 
 ### How You Can Help
+Thank you for your interest in contributing to coco. Your efforts help us build and maintain a vibrant, thriving community!
+
 1. **Star on GitHub**: Show your support by starring [coco](https://github.com/tobolabs/coco/stargazers).
 2. **Spread the Word**: Share your experiences with coco [on Twitter](https://x.com/intent/tweet?text=Checkout%20coco%20%28https%3A%2F%2Fgithub.com%2Ftobolabs%2Fcoco%29%20-%20A%20lightweight%20go%20web%20framework%20just%20like%20express%20).
 
 Thank you for your interest in contributing to coco. Your efforts help us build and maintain a vibrant, thriving community!
+

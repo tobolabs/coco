@@ -51,15 +51,16 @@ func main() {
    }
 }
 ```
+
 ## **Installation**:
+
    To use coco in your Go project, you need to install it using Go modules:
 
    ```shell
    go get github.com/tobolabs/coco
    ```
- 
-**See [examples](../examples) for more.**
 
+**See [examples](../examples) for more.**
 
 ## Contributing
 
@@ -84,6 +85,7 @@ At the core of Coco is httprouter, a fast HTTP router for Go by [Julien Schmidt]
 
 
 ## Author
+
 - [Noel Ukwa](https://github.com/noelukwa)
 
 Happy coding with 🌴🚀

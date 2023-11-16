@@ -302,7 +302,7 @@ func TestRequest_Cookie(t *testing.T) {
 func TestRequest_Get(t *testing.T) {
 	t.Run("it should retrieve the param value if it exists", func(t *testing.T) {
 		app := NewApp()
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest("GET", "/?name=test", nil)
 		req.Header.Add("X-Custom-Header", "value123")
 		w := httptest.NewRecorder()
 
@@ -312,31 +312,24 @@ func TestRequest_Get(t *testing.T) {
 
 		request, _ := newRequest(req, w, params, app)
 
-		// Execution
-		value := request.Get("id", "")
+		value := request.Get("X-Custom-Header")
 
-		// Assertion
-		if value != "123" {
+		if value != "value123" {
 			t.Errorf("Expected header value to be 'value123', got '%s'", value)
 		}
-	})
 
-	t.Run("it should return an empty string if the param does not exist", func(t *testing.T) {
-		app := NewApp()
-		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Add("X-Custom-Header", "value123")
-		w := httptest.NewRecorder()
+		param := request.GetParam("id")
 
-		params := httprouter.Params{
-			httprouter.Param{Key: "id", Value: "123"},
+		if param != "123" {
+			t.Errorf("Expected param value to be '123', got '%s'", param)
 		}
-		request, _ := newRequest(req, w, params, app)
 
-		value := request.Get("Nonexistent-Header", "")
+		query := request.QueryParam("name")
 
-		if value != "" {
-			t.Errorf("Expected an empty string for nonexistent header, got '%s'", value)
+		if query != "test" {
+			t.Errorf("Expected query value to be 'test', got '%s'", query)
 		}
+
 	})
 }
 
@@ -557,7 +550,6 @@ func Test_newRequest(t *testing.T) {
 	}
 }
 
-// test utils
 type errReader struct{}
 
 func (e errReader) Read(p []byte) (n int, err error) {
