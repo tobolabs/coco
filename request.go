@@ -299,12 +299,33 @@ func (req *Request) Cookie(name string) (value string, exists bool) {
 	return value, exists
 }
 
-// Get returns the value of param `name` when present or `defaultValue`.
-func (req *Request) Get(name string, defaultValue string) string {
+// GetParam returns the value of param `name` when present or `defaultValue`.
+func (req *Request) GetParam(name string) string {
 	if value, ok := req.Params[name]; ok {
 		return value
 	}
-	return defaultValue
+	return ""
+}
+
+// Get returns the value of specified HTTP request header field (case-insensitive match)
+func (req *Request) Get(key string) string {
+	if value := req.r.Header.Get(key); value != "" {
+		return value
+	}
+	return ""
+}
+
+// Set sets the value of specified HTTP request header field (case-insensitive match)
+func (req *Request) Set(key string, value string) {
+	req.r.Header.Set(key, value)
+}
+
+// QueryParam returns the value of query parameter `name` when present or `defaultValue`.
+func (req *Request) QueryParam(name string) string {
+	if value, ok := req.Query[name]; ok {
+		return value
+	}
+	return ""
 }
 
 // Is returns true if the incoming request’s “Content-Type” HTTP header field
