@@ -1,7 +1,6 @@
 package coco
 
 import (
-	"fmt"
 	"io/fs"
 	"net/http"
 	fp "path"
@@ -57,14 +56,14 @@ type Route struct {
 	children         map[string]*Route
 }
 
-func (r *Route) printRoutes(prefix string) {
-	fmt.Printf("%s%s with (%d) paths, children: (%d)  \n", prefix, r.base, len(r.paths), len(r.children))
+// func (r *Route) printRoutes(prefix string) {
+// 	fmt.Printf("%s%s with (%d) paths, children: (%d)  \n", prefix, r.base, len(r.paths), len(r.children))
 
-	for _, child := range r.children {
-		//fmt.Printf("%s%s\n", prefix, child.base)
-		child.printRoutes(prefix)
-	}
-}
+// 	for _, child := range r.children {
+// 		//fmt.Printf("%s%s\n", prefix, child.base)
+// 		child.printRoutes(prefix)
+// 	}
+// }
 
 // Router is equivalent of app.route(path), returns a new instance of Route
 func (r *Route) Router(path string) *Route {

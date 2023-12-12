@@ -10,7 +10,6 @@ type context struct {
 	templates map[string]*template.Template
 	req       *Request
 	app       *App
-	accepted  []string
 }
 
 func (c *context) coco() *App {

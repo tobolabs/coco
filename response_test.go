@@ -5,11 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"github.com/spf13/afero"
-	"github.com/stretchr/testify/assert"
-	"github.com/tobolabs/coco"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
+	"github.com/tobolabs/coco"
 )
 
 func TestResponseAppend(t *testing.T) {
@@ -489,6 +489,10 @@ func TestResponseJSON(t *testing.T) {
 		res.JSON(map[string]string{"status": "ok"})
 	})
 
+	app.Get("/json-status", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Status(http.StatusCreated).JSON(map[string]string{"status": "ok"})
+	})
+
 	srv := httptest.NewServer(app)
 	defer srv.Close()
 
@@ -500,6 +504,21 @@ func TestResponseJSON(t *testing.T) {
 
 	if !strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
 		t.Errorf("Expected Content-Type to be 'application/json', got '%s'", resp.Header.Get("Content-Type"))
+	}
+
+	resp, err = http.Get(srv.URL + "/json-status")
+	if err != nil {
+		t.Fatalf("Failed to make GET request: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("Expected status code to be %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+
+	defer resp.Body.Close()
+
+	if !strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
+		t.Fatalf("Expected Content-Type to be 'application/json', got '%s'", resp.Header.Get("Content-Type"))
 	}
 }
 
@@ -685,9 +704,8 @@ func TestResponseRedirect(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("Expected status code to be %d, got %d", http.StatusCreated, resp.StatusCode)
+		t.Errorf("Expected status code to be %d, got %d", http.StatusFound, resp.StatusCode)
 	}
-
 }
 
 func TestResponseLocation(t *testing.T) {
@@ -756,10 +774,13 @@ func TestResponseStatusCode(t *testing.T) {
 
 	app.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		next(res, req)
-		log.Printf("Status code: %d", res.StatusCode())
 		if res.StatusCode() != 401 {
 			t.Errorf("Expected status code to be 401, got %d", res.StatusCode())
 		}
+	})
+
+	app.Get("/test-response-status-chain", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
+		res.Status(401).JSON(map[string]string{"status": "unauthorized"})
 	})
 
 	app.Get("/test-response-status-code", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
@@ -770,8 +791,53 @@ func TestResponseStatusCode(t *testing.T) {
 	srv := httptest.NewServer(app)
 	defer srv.Close()
 
-	_, err := http.Get(srv.URL + "/test-response-status-code")
+	res, err := http.Get(srv.URL + "/test-response-status-code")
 	if err != nil {
 		t.Fatalf("Failed to make GET request: %v", err)
+	}
+
+	if res.StatusCode != 401 {
+		t.Errorf("Expected status code to be 401, got %d", res.StatusCode)
+	}
+
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if string(body) != "Unauthorized" {
+		t.Errorf("Expected response body to be 'Unauthorized', got '%s'", string(body))
+	}
+
+	cType := res.Header.Get("Content-Type")
+	if cType != "text/plain; charset=utf-8" {
+		t.Errorf("Expected Content-Type to be 'text/plain; charset=utf-8', got '%s'", cType)
+	}
+
+	res, err = http.Get(srv.URL + "/test-response-status-chain")
+	if err != nil {
+		t.Fatalf("Failed to make GET request: %v", err)
+	}
+
+	if res.StatusCode != 401 {
+		t.Errorf("Expected status code to be 401, got %d", res.StatusCode)
+	}
+
+	defer res.Body.Close()
+
+	body, err = io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if string(body) != `{"status":"unauthorized"}` {
+		t.Errorf("Expected response body to be '{\"status\":\"unauthorized\"}', got '%s'", string(body))
+	}
+
+	cType = res.Header.Get("Content-Type")
+	if cType != "application/json; charset=utf-8" {
+		t.Errorf("Expected Content-Type to be 'application/json', got '%s'", cType)
 	}
 }
