@@ -43,11 +43,11 @@ var (
 	ErrDotfilesDeny = errors.New("serving dotfiles is not allowed")
 )
 
-func (r *Response) setContentType(contentType string) {
-	if cty := r.ww.Header().Get("Content-Type"); cty == "" {
-		r.ww.Header().Set("Content-Type", contentType)
-	}
-}
+// func (r *Response) setContentType(contentType string) {
+// 	if cty := r.ww.Header().Get("Content-Type"); cty == "" {
+// 		r.ww.Header().Set("Content-Type", contentType)
+// 	}
+// }
 
 type wrappedWriter struct {
 	http.ResponseWriter
@@ -78,7 +78,10 @@ func (w *wrappedWriter) WriteHeader(code int) {
 
 func (w *wrappedWriter) Write(b []byte) (int, error) {
 	if !w.statusCodeWritten {
-		w.WriteHeader(http.StatusOK)
+		if w.statusCode == 0 {
+			w.statusCode = http.StatusOK
+		}
+		w.WriteHeader(w.statusCode)
 	}
 	return w.ResponseWriter.Write(b)
 }
@@ -103,9 +106,8 @@ func (w *wrappedWriter) Flush() {
 }
 
 type Response struct {
-	ww     *wrappedWriter
-	ctx    *context
-	status int
+	ww  *wrappedWriter
+	ctx *context
 }
 
 // Append sets the specified value to the HTTP response header field.
@@ -248,13 +250,13 @@ func (r *Response) SendFile(filePath, fileName string, options *DownloadOption, 
 
 // JSON sends a JSON response with the given payload.
 func (r *Response) JSON(v interface{}) *Response {
+	r.Set("Content-Type", "application/json; charset=utf-8")
 	jsn, err := json.Marshal(v)
 	if err != nil {
 		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 		return r
 	}
 
-	r.Set("Content-Type", "application/json; charset=utf-8")
 	_, err = r.ww.Write(jsn)
 	if err != nil {
 		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
@@ -311,14 +313,18 @@ func (r *Response) SendStatus(statusCode int) *Response {
 
 // Status sets the HTTP status for the response.
 func (r *Response) Status(code int) *Response {
-	r.ww.WriteHeader(code)
-	r.ww.WriteHeader(code)
+	r.ww.statusCode = code
+	r.ww.statusCodeWritten = false
 	return r
+}
+
+func (r *Response) StatusCode() int {
+	return r.ww._statusCode()
 }
 
 // Get returns the HTTP response header specified by field.
 func (r *Response) Get(key string) string {
-	return r.ww.Header().Get(http.CanonicalHeaderKey(key))
+	return r.ww.Header().Get(key)
 }
 
 // Location sets the response Location HTTP header to the specified path parameter.
@@ -345,12 +351,16 @@ func (r *Response) Redirect(path string, status ...int) *Response {
 	if path == "back" {
 		path = r.ctx.request().Referer()
 	}
+
 	if path == "" {
 		path = "/"
 	}
 
 	r.Location(path)
 	r.Status(statusCode)
+	r.Status(statusCode)
+	r.ww.WriteHeader(statusCode)
+	r.ww.Flush()
 	return r
 }
 
@@ -405,8 +415,4 @@ func (r *Response) Render(name string, data interface{}) *Response {
 		http.Error(r.ww, err.Error(), http.StatusInternalServerError)
 	}
 	return r
-}
-
-func (r *Response) StatusCode() int {
-	return r.ww._statusCode()
 }

@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/julienschmidt/httprouter"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/julienschmidt/httprouter"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestJSONError_Error(t *testing.T) {
