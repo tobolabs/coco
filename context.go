@@ -10,7 +10,6 @@ type context struct {
 	templates map[string]*template.Template
 	req       *Request
 	app       *App
-	accepted  []string
 }
 
 func (c *context) coco() *App {
@@ -28,8 +27,6 @@ func (c *context) next(rw Response, req *Request) {
 		http.NotFound(rw.ww, req.r)
 		return
 	}
-
-	// Take the first handler off the list and call it.
 	h := c.handlers[0]
 	c.handlers = c.handlers[1:]
 	h(rw, req, c.next)
