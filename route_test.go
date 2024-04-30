@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 func TestRoute_Use(t *testing.T) {

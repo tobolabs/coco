@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 func TestNewApp(t *testing.T) {

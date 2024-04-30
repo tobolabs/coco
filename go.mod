@@ -1,4 +1,4 @@
-module github.com/tobolabs/coco
+module github.com/tobolabs/coco/v2
 
 go 1.18
 

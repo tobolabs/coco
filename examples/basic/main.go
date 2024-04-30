@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 func main() {

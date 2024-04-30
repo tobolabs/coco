@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 var (
