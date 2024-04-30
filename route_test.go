@@ -1,4 +1,4 @@
-package coco
+package coco_test
 
 import (
 	"io"
@@ -6,20 +6,22 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+
+	"github.com/tobolabs/coco/v2"
 )
 
 func TestRoute_Use(t *testing.T) {
-	app := NewApp()
+	app := coco.NewApp()
 
 	middlewareCalled := false
-	middleware := func(res Response, req *Request, next NextFunc) {
+	middleware := func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		middlewareCalled = true
 		next(res, req)
 	}
 
 	app.Use(middleware)
 
-	app.Get("/", func(res Response, req *Request, next NextFunc) {
+	app.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		res.SendStatus(http.StatusOK)
 	})
 
@@ -41,8 +43,8 @@ func TestRoute_Use(t *testing.T) {
 }
 
 func TestRoute_Router(t *testing.T) {
-	app := NewApp()
-	subRouter := app.Router("/sub")
+	app := coco.NewApp()
+	subRouter := app.NewRouter("/sub")
 
 	if subRouter.Path() != "/sub" {
 		t.Errorf("Expected subRouter path to be '/sub', got '%s'", subRouter.Path())
@@ -50,10 +52,10 @@ func TestRoute_Router(t *testing.T) {
 }
 
 func TestRoute_Head(t *testing.T) {
-	app := NewApp()
+	app := coco.NewApp()
 
 	handlerCalled := false
-	app.Head("/", func(res Response, req *Request, next NextFunc) {
+	app.Head("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		handlerCalled = true
 	})
 
@@ -75,8 +77,8 @@ func TestRoute_Head(t *testing.T) {
 }
 
 func TestRoute_Path(t *testing.T) {
-	app := NewApp()
-	route := app.Router("/test")
+	app := coco.NewApp()
+	route := app.NewRouter("/test")
 
 	if route.Path() != "/test" {
 		t.Errorf("Expected route path to be '/test', got '%s'", route.Path())
@@ -85,7 +87,7 @@ func TestRoute_Path(t *testing.T) {
 
 func TestRoute_Static(t *testing.T) {
 	// Create a new App instance
-	app := NewApp()
+	app := coco.NewApp()
 
 	// Create an in-memory file system to simulate static files
 	fs := fstest.MapFS{
@@ -96,7 +98,7 @@ func TestRoute_Static(t *testing.T) {
 
 	app.Static(fs, "/static")
 
-	app.Get("/foo", func(res Response, req *Request, next NextFunc) {
+	app.Get("/foo", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		res.SendStatus(http.StatusOK)
 	})
 

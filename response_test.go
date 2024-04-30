@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 func TestResponseAppend(t *testing.T) {

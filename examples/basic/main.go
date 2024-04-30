@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 func main() {
@@ -37,10 +37,10 @@ func main() {
 	})
 
 	// Application.Disable ✅
-	app.Disable("x-powered-by")
+	app.SetSetting("x-powered-by", false)
 
 	// Application.Disabled ✅
-	fmt.Printf("Disabled: %v\n", app.Disabled("x-powered-by"))
+	fmt.Printf("Disabled: %v\n", app.IsSettingDisabled("x-powered-by"))
 
 	app.Get("/chekme", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 
@@ -81,7 +81,7 @@ func main() {
 		res.Send("Hello World Post")
 	})
 
-	userRouter := app.Router("users")
+	userRouter := app.NewRouter("users")
 
 	userRouter.Param("id", func(res coco.Response, req *coco.Request, next coco.NextFunc, param string) {
 		log.Println("User Param Middleware")
@@ -102,7 +102,7 @@ func main() {
 		res.Send(fmt.Sprintf("Hello %s 👋", req.Params["id"]))
 	})
 
-	profileRouter := userRouter.Router("profile")
+	profileRouter := userRouter.NewRouter("profile")
 
 	profileRouter.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		log.Println("Profile Middleware 1")
@@ -120,7 +120,7 @@ func main() {
 		res.Send("Hello User")
 	})
 
-	socialRouter := userRouter.Router("social")
+	socialRouter := userRouter.NewRouter("social")
 
 	socialRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)

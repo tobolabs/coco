@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/tobolabs/coco"
+	"github.com/tobolabs/coco/v2"
 )
 
 var (
@@ -23,9 +23,7 @@ func main() {
 
 	// named param
 	app.Get("/", func(rw coco.Response, r *coco.Request, next coco.NextFunc) {
-		if err := rw.Render("index", nil); err != nil {
-			fmt.Printf("error rendering template: %v", err)
-		}
+		rw.Render("index", nil)
 	})
 
 	app.Get("/health", func(rw coco.Response, req *coco.Request, next coco.NextFunc) {
@@ -40,7 +38,7 @@ func main() {
 		rw.Render("dash/index", nil)
 	})
 
-	if err := app.Listen(":8040"); err != nil {
+	if err := app.Listen("0.0.0.0:8040"); err != nil {
 		log.Fatal(err)
 	}
 

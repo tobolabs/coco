@@ -25,7 +25,6 @@ func Test_context_next_noHandlers(t *testing.T) {
 	if len(rc.handlers) != 0 {
 		t.Error("Expected no handlers to be removed from the slice")
 	}
-	
 }
 
 func Test_context_next_oneHandler(t *testing.T) {
