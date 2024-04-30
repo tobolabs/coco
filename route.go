@@ -53,6 +53,18 @@ type route struct {
 	children         map[string]*route
 }
 
+// func (r *Route) printRoutes(prefix string) {
+// 	fmt.Printf("%s%s with (%d) paths, children: (%d)  \n", prefix, r.base, len(r.paths), len(r.children))
+
+// 	for _, child := range r.children {
+// 		//fmt.Printf("%s%s\n", prefix, child.base)
+// 		child.printRoutes(prefix)
+// 	}
+// }
+
+// Router is equivalent of app.route(path), returns a new instance of Route
+
+
 func (r *route) combineHandlers(handlers ...Handler) []Handler {
 	middlewares := make([]Handler, 0)
 	middlewares = append(middlewares, r.fetchMiddleware()...)
