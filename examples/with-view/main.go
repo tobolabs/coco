@@ -23,7 +23,6 @@ func main() {
 
 	// named param
 	app.Get("/", func(rw coco.Response, r *coco.Request, next coco.NextFunc) {
-
 		rw.Render("index", nil)
 	})
 

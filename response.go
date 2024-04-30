@@ -43,11 +43,11 @@ var (
 	ErrDotfilesDeny = errors.New("serving dotfiles is not allowed")
 )
 
-func (r *Response) setContentType(contentType string) {
-	if cty := r.ww.Header().Get("Content-Type"); cty == "" {
-		r.ww.Header().Set("Content-Type", contentType)
-	}
-}
+// func (r *Response) setContentType(contentType string) {
+// 	if cty := r.ww.Header().Get("Content-Type"); cty == "" {
+// 		r.ww.Header().Set("Content-Type", contentType)
+// 	}
+// }
 
 type wrappedWriter struct {
 	http.ResponseWriter
@@ -103,9 +103,8 @@ func (w *wrappedWriter) Flush() {
 }
 
 type Response struct {
-	ww     *wrappedWriter
-	ctx    *context
-	status int
+	ww  *wrappedWriter
+	ctx *context
 }
 
 // Append sets the specified value to the HTTP response header field.
