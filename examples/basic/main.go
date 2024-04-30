@@ -37,10 +37,10 @@ func main() {
 	})
 
 	// Application.Disable ✅
-	app.SetSetting("x-powered-by", false)
+	app.Disable("x-powered-by")
 
 	// Application.Disabled ✅
-	fmt.Printf("Disabled: %v\n", app.IsSettingDisabled("x-powered-by"))
+	fmt.Printf("Disabled: %v\n", app.Disabled("x-powered-by"))
 
 	app.Get("/chekme", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 
@@ -81,7 +81,7 @@ func main() {
 		res.Send("Hello World Post")
 	})
 
-	userRouter := app.NewRouter("users")
+	userRouter := app.Router("users")
 
 	userRouter.Param("id", func(res coco.Response, req *coco.Request, next coco.NextFunc, param string) {
 		log.Println("User Param Middleware")
@@ -102,7 +102,7 @@ func main() {
 		res.Send(fmt.Sprintf("Hello %s 👋", req.Params["id"]))
 	})
 
-	profileRouter := userRouter.NewRouter("profile")
+	profileRouter := userRouter.Router("profile")
 
 	profileRouter.Use(func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		log.Println("Profile Middleware 1")
@@ -120,7 +120,7 @@ func main() {
 		res.Send("Hello User")
 	})
 
-	socialRouter := userRouter.NewRouter("social")
+	socialRouter := userRouter.Router("social")
 
 	socialRouter.Get("/", func(res coco.Response, req *coco.Request, next coco.NextFunc) {
 		fmt.Printf("req.BaseUrl : %s\n", req.BaseURL)
